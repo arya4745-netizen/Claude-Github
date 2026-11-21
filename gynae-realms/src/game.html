@@ -110,6 +110,27 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: c
 #leapCard button { pointer-events: auto; font: inherit; text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 13px; background: transparent; color: var(--brass); border: 1px solid var(--brass); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 #stage.leaping #toasts { top: auto; bottom: 10px; }
 #stage.leaping #toasts .toast:not(:last-child) { display: none; }
+#roomCard { position: absolute; bottom: 10px; left: max(12px, env(safe-area-inset-left, 0px)); width: min(460px, calc(55% - 18px)); background: rgba(18, 15, 26, .88); border: 1px solid #8fd3ff; border-radius: 12px; padding: 8px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; pointer-events: none; }
+#roomCard .lrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #8fd3ff; font-size: 11px; font-family: var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+#roomCard .lq { font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+#roomCard .rgoal { color: var(--ink); line-height: 1.35; }
+#roomCard .rstat { font-family: var(--font-mono); font-size: 12px; color: var(--brass); line-height: 1.4; }
+#roomCard button { pointer-events: auto; font: inherit; text-transform: none; letter-spacing: 0; font-family: var(--font-body); font-size: 12px; background: transparent; color: #8fd3ff; border: 1px solid #8fd3ff; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+#stage.carded #near { left: auto; right: max(12px, env(safe-area-inset-right, 0px)); transform: none; max-width: calc(45% - 18px); bottom: 10px; }
+#stage.carded #toasts { top: auto; bottom: 62px; left: auto; right: max(12px, env(safe-area-inset-right, 0px)); transform: none; width: calc(45% - 18px); align-items: flex-end; }
+#stage.carded #toasts .toast:not(:last-child) { display: none; }
+@media (max-width: 700px) {
+  #roomCard { width: calc(100% - 24px); }
+  #stage.carded #near { left: 12px; right: 12px; max-width: none; bottom: auto; top: 50px; }
+  #stage.carded #toasts { top: 96px; bottom: auto; left: 12px; right: 12px; width: auto; align-items: center; }
+}
+@media (max-height: 520px) {
+  #roomCard { top: 6px; bottom: auto; left: 50%; transform: translateX(-50%); width: min(34%, 340px); padding: 4px 10px; gap: 0; }
+  #roomCard .lrow, #roomCard .rgoal { display: none; }
+  #stage.carded #lvlChip { display: none; }
+  #roomCard .lq { font-size: 12px; }
+  #roomCard .rstat { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 @media (max-height: 520px) {
   #leapCard { top: 46px; padding: 6px 10px; gap: 3px; font-size: 12px; }
   #leapCard .lq { font-size: 13px; }
@@ -208,7 +229,7 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
       <header class="masthead">
         <span class="eyebrow">Week 1 · General gynae · RANZCOG OSCE</span>
         <h1>Gynae Realms</h1>
-        <p class="lede">Nine realms, one per station of your week-one deck. Wall-jump up shafts, outrun the chase, leap onto the right answer, dig out hidden pearls, then break each realm's guardian in open recall.</p>
+        <p class="lede">Nine realms, one per station of your week-one deck. Wall-jump up shafts, outrun the chase, solve a puzzle room, leap onto the right answer, dig out hidden pearls, then break each realm's guardian in open recall.</p>
       </header>
       <div class="shrine">
         <div>
@@ -247,6 +268,7 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
       </div>
       <div id="bossbar" hidden><span id="bossName"></span><div class="bb"><i id="bossHp"></i></div></div>
       <div id="leapCard" hidden></div>
+      <div id="roomCard" hidden></div>
       <div id="near" hidden><span id="nearText"></span><button type="button" id="nearBtn" hidden>Read</button></div>
       <div id="toasts" aria-live="polite"></div>
     </div>

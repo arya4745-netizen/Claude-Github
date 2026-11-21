@@ -290,3 +290,35 @@ const CUSTOM_RECALL = [
   { id: "c9c", type: "why", q: "What does tamoxifen do to the endometrium?", a: "As a partial oestrogen agonist it causes polyps, hyperplasia and a 2–3 times risk of endometrial cancer." },
   { id: "c9d", type: "fact", q: "Treatment for atypical hyperplasia in a woman not wanting fertility?", a: "Total hysterectomy with bilateral salpingo-oophorectomy (no ablation), with gynae-oncology input." }
 ];
+
+/* Puzzle rooms: one single-screen puzzle per realm. Each turns a key fact into a machine you operate.
+   title, goal (shown while solving), picture (the image to remember), lesson (the fact). Logic lives in rooms.js. */
+const ROOMS = {
+  s1: { title: "The Liver's Chains", goal: "Free-testosterone ogres are loose. Get the liver forging its SHBG chains again so you can cross.",
+    picture: "Insulin is golden syrup flooding the liver's chain-forge. While it floods, no SHBG chains are made and the testosterone ogres run free. Drain the syrup and the chains bind them.",
+    lesson: "Hyperinsulinaemia suppresses hepatic SHBG, so free testosterone rises. Lowering insulin (weight loss, exercise, metformin) raises SHBG and lowers free androgens. Spironolactone blocks the receptor but doesn't fix the cause." },
+  s2: { title: "The Leaking Vessels", goal: "The belly is full of fluid. Seal the vessels so the ascites returns and you can cross.",
+    picture: "hCG is a lightning bolt cracking the blood vessels (VEGF). Plasma pours into the belly as ascites while the blood left behind turns thick and sludgy.",
+    lesson: "OHSS is capillary leak: fluid shifts into third spaces and the blood haemoconcentrates (Hct over 0.45 is severe). Prevent it with a GnRH agonist trigger and freeze-all. Treat supportively, never with diuretics." },
+  s3: { title: "Too Deep to Burn", goal: "Her Hb is falling. Stop every bleeding source, surface and deep.",
+    picture: "The uterine wall is a layered cake. Ablation scorches only the icing (the endometrium); adenomyosis bleeds from glands buried deep in the sponge (the myometrium).",
+    lesson: "Endometrial ablation treats only the surface lining, so it often fails with adenomyosis and a bulky uterus. An LNG-IUS, or hysterectomy, treats the deeper disease." },
+  s4: { title: "Water Under the Bridge", goal: "Clamp the uterine artery for the hysterectomy without damming the ureter.",
+    picture: "Water under the bridge: the ureter is a river flowing under the uterine artery bridge, 1.5–2 cm from the cervix. You can tell the river by its wriggle (peristalsis).",
+    lesson: "At hysterectomy the uterine artery is secured close to the cervix. The ureter passes beneath it 1.5–2 cm laterally, one of the commonest sites of ureteric injury. Identify it by its peristalsis." },
+  s5: { title: "Virchow's Triangle", goal: "A clot blocks the vein. Fix each side of the triangle you can.",
+    picture: "A clot needs three things: still water (stasis), a cracked pipe (endothelial injury) and sticky blood (hypercoagulability). Surgery cracked the pipe, bed rest stilled the water, factor V Leiden made the blood sticky.",
+    lesson: "Prevent VTE by attacking the parts of Virchow's triad you can: early mobilisation and compression for stasis, and LMWH for hypercoagulability. Aspirin isn't adequate after major surgery." },
+  s6: { title: "The Vagal Brake", goal: "Her heart rate is 40. Get it above 70 so the heart can drive the lift.",
+    picture: "The cervix is wired to a brake on the heart: the vagus nerve. Stretch the cervix and the brake slams on, the heart slows, and blood stops reaching the brain.",
+    lesson: "Cervical shock is a vagal reflex causing bradycardia and hypotension. Stop the stimulus, lie her flat with legs raised, and give atropine 600 micrograms IV if bradycardia persists. Adrenaline IM is for anaphylaxis, not for a faint." },
+  s7: { title: "Untwist the Ovary", goal: "The ovary has twisted on its pedicle. Untwist it before it dies, then ride it up.",
+    picture: "The ovary is a balloon on a twisted string. Each twist strangles the soft veins first, so the balloon swells and darkens while the stiffer artery may still pulse.",
+    lesson: "Torsion is a clinical diagnosis: venous obstruction comes before arterial, so normal Doppler flow doesn't exclude it. Untwist (detort) and conserve the ovary even if it looks dusky." },
+  s8: { title: "The Glycine Tank", goal: "Resect all three fibroids without letting the fluid deficit reach the danger line.",
+    picture: "Glycine is fresh water soaking into a salty sea, her blood. Too much and the sea dilutes: sodium falls and the brain swells like a sponge.",
+    lesson: "Monopolar resection uses hypotonic glycine: stop at a 1000 mL deficit (750 mL if frail) to avoid hyponatraemia and cerebral oedema. Bipolar resection uses isotonic saline, with a limit of 2500 mL. Choose the medium before you start." },
+  s9: { title: "Two Faces of Tamoxifen", goal: "Raise the breast shield: activate tamoxifen and cool the hot flushes safely.",
+    picture: "Tamoxifen is a two-faced statue: one face holds a shield over the breast, the other waters the womb. It only wakes up after the liver's CYP2D6 forge turns it into endoxifen, and paroxetine jams that forge.",
+    lesson: "Tamoxifen is a prodrug activated by CYP2D6. Paroxetine and fluoxetine block CYP2D6 and weaken it, so use venlafaxine for hot flushes. Systemic oestrogen is out after breast cancer. Its agonist effect on the endometrium means any bleeding must be investigated." }
+};

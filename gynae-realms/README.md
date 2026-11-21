@@ -24,6 +24,23 @@ A browser platformer for studying **Week 1: General Gynae** (RANZCOG OSCE practi
 - **Guardians** ask open recall (OSCE Recall Drill plus station notes), typed or dictated and marked out of 2 by Claude. At half health they enrage: a spike crown that only a ground pound breaks, shockwaves or shot rings.
 - Where the 2023 deck is out of date (letrozole first line, tamoxifen 20 mg, danazol, evening primrose oil, egg-collection timing, MHT window, empirical endometriosis treatment), the game teaches current guidance and shows what the notes said.
 
+## Puzzle rooms
+One single-screen room per realm, after the chase. The camera locks and zooms so the whole puzzle fits. Press ↓ on the ground to pull levers, pick up and place items; R resets. Each room turns one fact into a machine, and wrong moves play out their consequence:
+
+| Realm | Room | Image |
+|---|---|---|
+| PCOS | The Liver's Chains | Insulin syrup floods the liver's SHBG forge, so free-testosterone ogres run loose |
+| IVF/OHSS | The Leaking Vessels | hCG lightning cracks vessels: plasma floods the belly, blood thickens; diuretics make it worse |
+| HMB | Too Deep to Burn | Ablation scorches only the icing; adenomyosis bleeds from deep in the sponge |
+| Endometriosis | Water Under the Bridge | Clamp the uterine-artery bridge at the cervix, not over the wriggling ureter river |
+| Cystectomy | Virchow's Triangle | Shrink the clot by fixing stasis and hypercoagulability |
+| Collapse | The Vagal Brake | The cervix is wired to a brake on the heart; lift the rate to power the lift |
+| Torsion | Untwist the Ovary | A balloon on a twisted string darkens while Doppler still shows flow |
+| Fibroid | The Glycine Tank | Fresh water diluting a salty sea: choose the medium before you cut |
+| Tamoxifen | Two Faces of Tamoxifen | Shields the breast, waters the womb; paroxetine jams the CYP2D6 forge |
+
+Room text lives in `src/content.js` (`ROOMS`); room machines in `src/rooms.js`.
+
 ## Moves and level pieces
 Double jump, wall slide and wall jump, air dash, ground pound. Wall-jump shafts, moving platforms, crumbling bridges, springs, spikes, turrets, hoppers, fliers, remedies (+1 heart), and a themed **chase** in every realm (the Crimson Flood, Rising Glycine, the Hot Flush and others). Score, answer streaks and a rank (S needs 3 stars and all 3 pearls).
 
@@ -31,6 +48,7 @@ Double jump, wall slide and wall jump, air dash, ground pound. Wall-jump shafts,
 - `src/content.js` – all study content (levels, questions, explanations, custom recall).
 - `src/game.html` – page markup and styles.
 - `src/engine.js` – level generator, physics, rendering, dialogs and progress.
+- `src/rooms.js` – the puzzle-room framework and the nine room machines.
 - `drill-week1.json` – week-one questions extracted from the OSCE Recall Drill (`tools/extract-drill.mjs`).
 - `index.html` – built single-file game: `node tools/build.mjs`.
 

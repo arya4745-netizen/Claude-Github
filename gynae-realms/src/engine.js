@@ -129,7 +129,7 @@ function openBriefing(L) {
       el("h3", { text: "What you'll cover" }),
       el("div", { class: "chunks" }, ...L.chunks.map(c => el("span", { text: c }))),
       notes.length ? el("div", { class: "note" }, el("b", { text: "Updated from your notes: " }), notes.map(n => n.now.split(";")[0]).join(" · ")) : null,
-      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". ",
+      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". Puzzle room: " + ROOMS[L.id].title + " (press ↓ on the ground to use levers and carry items). ",
         el("span", { class: "kbd", text: "← →" }), " move, ", el("span", { class: "kbd", text: "Space" }), " jump (twice for a double jump, against a wall to wall-jump), ",
         el("span", { class: "kbd", text: "Shift" }), " or ", el("span", { class: "kbd", text: "X" }), " dash, ", el("span", { class: "kbd", text: "↓" }), " ground pound, ",
         el("span", { class: "kbd", text: "H" }), " spend Insight at a leap, ", el("span", { class: "kbd", text: "E" }), " reread a sign. On a phone, use the buttons under the game and turn it sideways."),
@@ -143,6 +143,8 @@ function openCodex(L, back) {
   showModal(p => {
     const list = el("div", { class: "codex" });
     for (const s of L.segs) if (s.t === "sign") list.append(el("article", {}, el("h3", { text: s.title }), s.steps ? el("ol", { class: "steps" }, ...s.steps.map(x => el("li", { text: x[1] }))) : null, el("p", { class: s.steps ? "muted" : null, text: s.text }), noteEl(s.note)));
+    const R = ROOMS[L.id];
+    if (R) list.append(el("article", {}, el("h3", { text: "Puzzle room: " + R.title }), el("p", { text: R.picture }), el("p", { class: "muted", text: R.lesson })));
     p.append(el("span", { class: "kicker", text: "Scrolls · " + L.station }), el("h2", { text: L.name }), list,
       el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => back ? back() : closeModal() })));
   });
@@ -352,6 +354,7 @@ addEventListener("keydown", e => {
   if (k) { press(k); e.preventDefault(); }
   if (e.code === "KeyE") { if (nearSign) openSign(nearSign); }
   if (e.code === "KeyH") useLeapInsight();
+  if (e.code === "KeyR" && G.room && G.room.inside) roomReset(G.room);
   if (e.code === "Escape" || e.code === "KeyP") openPause();
 });
 addEventListener("keyup", e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
@@ -432,6 +435,17 @@ function buildLevel(L) {
     flat(2); const x1 = X();
     B.ev.push({ type: "chase", x0, x1 });
     B.ev.push({ type: "check", x: X() }); flat(3);
+    puzzleRoom();
+  }
+  function puzzleRoom() {
+    const g = ROOM_GEOM[L.id]; if (!g) return;
+    flat(3); B.ev.push({ type: "check", x: X() - 2 });
+    const x0 = X();
+    for (let i = 0; i < ROOM_W; i++) col(g.top ? g.top(i) : GR);
+    (g.blocks || []).forEach(([x, row, w]) => block(x0 + x, row, w));
+    (g.cracked || []).forEach(([x, row]) => { cols[x0 + x][row] = 4; });
+    B.ev.push({ type: "room", x0, x1: X() });
+    B.ev.push({ type: "door", kind: "room", x: X() }); flat(4);
   }
 
   flat(3); B.ev.push({ type: "check", x: 1, start: true }); flat(4);
@@ -497,7 +511,7 @@ function startLevel(L) {
     enemies: [], doors: [], signs: [], orbs: [], flags: [], zones: {}, shots: [], waves: [], fx: [], pops: [], trail: [],
     plats: B.plats.map(p => ({ ...p, x0: p.x, y0: p.y, t: 0, dx: 0 })), springs: B.springs, spikes: B.spikes, tips: B.tips,
     pearls: B.pearls.map((p, i) => ({ ...p, taken: false, fact: pearlFacts[i % pearlFacts.length] })), potions: B.potions,
-    boss: null, portal: null, chase: null, check: null, cam: 0, time: 0, shake: 0, look: 0, hitstop: 0, iris: RM ? 1 : 0, exitT: 0, scoreShown: 0,
+    boss: null, portal: null, chase: null, room: null, carry: null, roomLock: null, zoom: 1, check: null, cam: 0, time: 0, shake: 0, look: 0, hitstop: 0, iris: RM ? 1 : 0, exitT: 0, scoreShown: 0,
     slips: 0, missed: [], recall: [], recallPool: shuffle(L.boss.recall.filter(id => QB[id])), recallIdx: 0,
     startX: 0, bossStarted: false, done: false
   };
@@ -509,7 +523,9 @@ function startLevel(L) {
       const d = { col: e.x, kind: e.kind, seg: e.seg, gid: e.gid, open: e.kind === "arena", fade: 0 };
       G.doors.push(d); if (!d.open) G.dyn[e.x] = 1;
       if (e.gid) G.zones[e.gid].door = d;
+      if (e.kind === "room" && G.room) G.room.door = d;
     }
+    else if (e.type === "room") G.room = makeRoom(L, e.x0, e.x1);
     else if (e.type === "zone") G.zones[e.gid] = { gid: e.gid, seg: e.seg, kind: e.kind, x0: e.x0 * TILE, x1: e.x1 * TILE, intro: false, got: 0, total: e.kind === "pick" ? e.seg.good.length : 1, done: false, wrong: false };
     else if (e.type === "orb") G.orbs.push({ x: e.x * TILE + 16, y: e.row * TILE - 30, r: 11, gid: e.gid, ...e.item, taken: false, ph: Math.random() * 6 });
     else if (e.type === "chase") G.chase = { x0: e.x0 * TILE, x1: e.x1 * TILE, wx: (e.x0 - 8) * TILE, active: false, done: false, ...L.chase };
@@ -527,6 +543,7 @@ function startLevel(L) {
   $("mapScreen").hidden = true; $("gameScreen").hidden = false;
   $("lvlChip").textContent = L.name; $("toasts").textContent = "";
   $("bossbar").hidden = true; $("meterChip").hidden = !L.meter; $("leapCard").hidden = true; leapShown = null;
+  $("roomCard").hidden = true; $("stage").classList.remove("carded", "leaping");
   heartsShown = MAXH; renderHearts(); renderSlips(); renderInsight(); renderScore(); resize();
   lastFrame = performance.now();
   toast(L.station + ". Read the signs: the gates and leaps ask about them.");
@@ -559,6 +576,7 @@ function updateNear() {
   const consider = (ox, oy, text, sign) => { const d = Math.hypot(ox - cx, oy - cy); if (d < bd) { bd = d; best = { text, sign }; } };
   for (const s of G.signs) consider(s.x + 13, s.y + 17, (s.seg.steps ? "Scroll: " : "Sign: ") + s.seg.title, s);
   for (const o of G.orbs) if (!o.taken) consider(o.x, o.y, "Orb: " + o.full, null);
+  if (G.room) roomNear(G.room, (x, y, text) => consider(x, y, text, null));
   nearSign = best && best.sign;
   const box = $("near");
   if (!best || leapShown) { box.hidden = true; return; }
@@ -602,6 +620,7 @@ function openPause() {
       el("button", { type: "button", class: "btn primary", text: "Resume", onclick: closeModal }),
       el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(G.L, () => { closeModal(); openPause(); }) }),
       el("button", { type: "button", class: "btn", text: "Back to the last banner", onclick: () => { closeModal(); respawn(); } }),
+      G.room && G.room.inside && !G.room.solved ? el("button", { type: "button", class: "btn", text: "Reset the puzzle room", onclick: () => { closeModal(); roomReset(G.room); } }) : null,
       el("button", { type: "button", class: "btn quiet", text: "Leave the realm", onclick: quitToMap }))));
 }
 
@@ -638,6 +657,7 @@ async function triggerDoor(d) {
     if (!d.nag || G.time - d.nag > 4) { d.nag = G.time; toast(z.kind === "leap" ? "The veil holds. Land on the right answer first." : "The veil holds. Gather every right orb first."); }
     return;
   }
+  if (d.kind === "room") { if (!d.nag || G.time - d.nag > 4) { d.nag = G.time; toast("A seal blocks the way. Solve the puzzle room to open it."); } return; }
   d.busy = true;
   if (d.kind === "gate") {
     const it = QB[d.seg.id];
@@ -840,6 +860,8 @@ function respawn() {
   if (G.boss && !G.boss.dead) { const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0; G.bossStarted = false; G.shots = []; G.waves = []; $("bossbar").hidden = true; }
   const ch = G.chase;
   if (ch && !ch.done && c.x < ch.x1) { ch.active = false; ch.wx = ch.x0 - 8 * TILE; }
+  G.carry = null;
+  const rm = G.room; if (rm && !rm.solved && c.x >= rm.x0 - 6 * TILE && c.x <= rm.x1) roomReset(rm, true);
 }
 function faint() {
   G.hearts = 0; renderHearts();
@@ -877,13 +899,17 @@ function breakCracked(tx, ty) {
   if (tx < 0 || tx >= G.W || G.tiles[ty * G.W + tx] !== 4) return;
   G.tiles[ty * G.W + tx] = 0;
   burst(tx * TILE + 16, ty * TILE + 10, G.t.top, 10);
+  if (G.room && G.room.impl.onBreak && tx >= G.room.c0 && tx < G.room.c1) G.room.impl.onBreak(G.room, tx, ty);
   breakCracked(tx - 1, ty); breakCracked(tx + 1, ty);
+  if (ty > 0) breakCracked(tx, ty - 1);
+  if (ty < ROWS - 1) breakCracked(tx, ty + 1);
 }
 
 function updatePlayer(dt) {
   const p = G.player;
   // ride moving platforms
   if (p.onPlat && p.onPlat.alive && p.onPlat.dx) moveX(p, p.onPlat.dx);
+  if (p.onPlat && p.onPlat.alive && p.onPlat.dy) p.y += p.onPlat.dy;
   p.inv -= dt; p.lock -= dt; p.dashCd -= dt; p.buf -= dt; p.coyote -= dt;
   const dir = p.lock > 0 ? 0 : (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   if (pressed.jump) { p.buf = 0.13; pressed.jump = false; }
@@ -895,7 +921,8 @@ function updatePlayer(dt) {
   // ground pound
   if (pressed.down) {
     pressed.down = false;
-    if (!p.ground && !p.pound && p.dash <= 0) { p.pound = 1; p.hang = 0.1; p.vx = 0; p.vy = 0; }
+    if (p.ground) roomInteract();
+    else if (!p.pound && p.dash <= 0) { p.pound = 1; p.hang = 0.1; p.vx = 0; p.vy = 0; }
   }
   if (p.dash > 0) {
     p.dash -= dt; p.vx = p.face * 520; p.vy = 0;
@@ -989,7 +1016,8 @@ function update(dt) {
   G.time += dt; G.shake = Math.max(0, G.shake - dt);
   // platforms first, so riders move with them
   for (const pl of G.plats) {
-    if (pl.kind === "move") { const nx = pl.ax + (pl.bx - pl.ax) * (0.5 - 0.5 * Math.cos(G.time * pl.sp + pl.ph)); pl.dx = nx - pl.x; pl.x = nx; }
+    if (pl.kind === "lift") { const ny = pl.active ? pl.ay + (pl.by - pl.ay) * (0.5 - 0.5 * Math.cos((pl.lt = (pl.lt || 0) + dt) * pl.sp)) : pl.ay; pl.dy = ny - pl.y; pl.y = ny; }
+    else if (pl.kind === "move") { const nx = pl.ax + (pl.bx - pl.ax) * (0.5 - 0.5 * Math.cos(G.time * pl.sp + pl.ph)); pl.dx = nx - pl.x; pl.x = nx; }
     else if (pl.kind === "crumble" && pl.t) {
       pl.t += dt;
       if (pl.alive && pl.t > 0.45) { pl.alive = false; pl.fall = 0.01; }
@@ -1005,6 +1033,7 @@ function update(dt) {
   }
   // tips
   for (const tp of G.tips) if (!TIPS_SEEN.has(tp.key) && p.x > tp.x - 5 * TILE) { TIPS_SEEN.add(tp.key); toast(tp.text, null, 6500); }
+  if (G.room) { roomUpdate(G.room, dt); if (modalOpen || !G) return; }
   // checkpoints
   for (const f of G.flags) if (p.x > f.x - 8 && f.x > G.check.x) { if (!f.on) { f.on = true; toast("Banner raised. You'll return here if you fall.", "good"); } G.check = f; }
   // signs, zones
@@ -1164,12 +1193,13 @@ function drawFlash(fn, cx, cy, size, flash, color) {
   offCtx.globalCompositeOperation = "source-over"; offCtx.globalAlpha = 1;
   ctx.drawImage(off, 0, 0, S, S, cx - size / 2, cy - size / 2, size, size);
 }
-let VW = 480, VH = 384, SC = 1, OFFY = 0, DPR = 1;
+let VW = 480, VH = 384, SC = 1, OFFY = 0, DPR = 1, STW = 480, STH = 384, BASESC = 1;
 function resize() {
   const r = $("stage").getBoundingClientRect();
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.max(1, Math.round(r.width * DPR)); cv.height = Math.max(1, Math.round(r.height * DPR));
   SC = Math.min(r.height / (ROWS * TILE), r.width / (11 * TILE));
+  STW = r.width; STH = r.height; BASESC = SC;
   VW = r.width / SC; VH = r.height / SC; OFFY = Math.max(0, VH - ROWS * TILE);
 }
 addEventListener("resize", () => { if (G) resize(); });
@@ -1276,6 +1306,7 @@ function drawTiles() {
   }
 }
 function drawPlat(pl) {
+  if (pl.hidden) return;
   if (pl.x + pl.w < G.cam - 40 || pl.x > G.cam + VW + 40) return;
   if (!pl.alive && (!pl.fall || pl.fall > 1)) return;
   const t = G.t, a = pl.alive ? 1 : clamp(1 - pl.fall, 0, 1);
@@ -1422,7 +1453,7 @@ function drawDoor(d) {
   if (d.open && (d.fade === 0 || d.fade >= 1)) return;
   const a = d.open ? 1 - d.fade : 1, X = d.col * TILE, gy = GR * TILE, t = G.t;
   ctx.save(); ctx.globalAlpha = a;
-  const tint = d.kind === "arena" ? "255,120,110" : d.kind === "echo" ? "200,170,255" : d.kind === "barrier" ? "255,220,150" : "255,236,200";
+  const tint = d.kind === "arena" ? "255,120,110" : d.kind === "echo" ? "200,170,255" : d.kind === "barrier" ? "255,220,150" : d.kind === "room" ? "143,211,255" : "255,236,200";
   const vg = ctx.createLinearGradient(0, 0, 0, gy); vg.addColorStop(0, "rgba(" + tint + ",0)"); vg.addColorStop(1, "rgba(" + tint + ",0.32)");
   ctx.fillStyle = vg; ctx.fillRect(X + 4, 0, TILE - 8, gy);
   for (let i = 0; i < 5; i++) { const yy = (G.time * 40 + i * 60) % gy; ctx.fillStyle = "rgba(" + tint + ",0.5)"; ctx.fillRect(X + 8 + (i % 3) * 6, gy - yy, 2, 8); }
@@ -1431,10 +1462,10 @@ function drawDoor(d) {
   ctx.fillStyle = "#373244"; ctx.fillRect(X - 6, gy - 96, 3, 96); ctx.fillRect(X + TILE + 3, gy - 96, 3, 96);
   const glow = 0.6 + 0.4 * Math.sin(G.time * 3);
   ctx.fillStyle = "rgba(" + tint + "," + glow + ")"; ctx.font = "700 22px Cinzel, Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const glyph = d.kind === "gate" ? "?" : d.kind === "echo" ? "↺" : d.kind === "arena" ? "✕" : "◆";
+  const glyph = d.kind === "gate" ? "?" : d.kind === "echo" ? "↺" : d.kind === "arena" ? "✕" : d.kind === "room" ? "✦" : "◆";
   ctx.fillText(glyph, X + TILE / 2, gy - 52);
   ctx.restore();
-  if (!d.open && d.kind !== "arena") label(d.kind === "gate" ? "Gate" : d.kind === "echo" ? "Echo Gate" : "Veil", X + TILE / 2, gy - 118, t.accent);
+  if (!d.open && d.kind !== "arena") label(d.kind === "gate" ? "Gate" : d.kind === "echo" ? "Echo Gate" : d.kind === "room" ? "Seal" : "Veil", X + TILE / 2, gy - 118, t.accent);
 }
 function drawSign(s) {
   ctx.fillStyle = "#6b4a2e"; ctx.fillRect(s.x + 11, s.y + 12, 4, 22);
@@ -1552,13 +1583,18 @@ function drawBoss(b) {
   ctx.restore();
 }
 function render() {
+  // puzzle rooms: zoom out until the whole room fits, and centre on it
+  const zt = G.roomLock ? Math.min(1, STW / ((ROOM_W + 2.5) * TILE * BASESC)) : 1;
+  G.zoom += (zt - G.zoom) * 0.08; if (Math.abs(zt - G.zoom) < 0.002) G.zoom = zt;
+  SC = BASESC * G.zoom; VW = STW / SC; VH = STH / SC; OFFY = Math.max(0, VH - ROWS * TILE);
   ctx.setTransform(DPR * SC, 0, 0, DPR * SC, 0, 0);
   const p = G.player;
-  const target = p.x + p.w / 2 - VW * 0.42 + G.look;
+  const target = G.roomLock ? G.roomLock.x0 + ROOM_W * TILE / 2 - VW / 2 : p.x + p.w / 2 - VW * 0.42 + G.look;
   G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * 0.1;
   drawBackground();
   const shk = RM ? 0 : G.shake, sx = shk > 0 ? (Math.random() - 0.5) * 8 * shk / 0.3 : 0, sy = shk > 0 ? (Math.random() - 0.5) * 6 * shk / 0.3 : 0;
   ctx.save(); ctx.translate(-Math.round(G.cam * 10) / 10 + sx, OFFY + sy);
+  if (G.room) roomDrawBack(G.room);
   drawTiles();
   for (const pl of G.plats) drawPlat(pl);
   for (const sk of G.spikes) if (sk.x + sk.w > G.cam && sk.x < G.cam + VW) drawSpikes(sk);
@@ -1566,6 +1602,7 @@ function render() {
   for (const f of G.flags) drawFlag(f);
   for (const s of G.signs) drawSign(s);
   for (const d of G.doors) drawDoor(d);
+  if (G.room) roomDrawFront(G.room);
   for (const o of G.orbs) drawOrb(o);
   for (const pr of G.pearls) drawPearl(pr);
   for (const po of G.potions) drawPotion(po);
@@ -1575,6 +1612,7 @@ function render() {
   for (const s of G.shots) { const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, G.t.enemy); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill(); }
   if (G.portal) { const q = G.portal, grow = clamp((G.time - (q.born || 0)) * 2, 0, 1); ctx.save(); ctx.translate(q.x, q.y); ctx.scale(grow, grow); const pg = ctx.createRadialGradient(0, 0, 2, 0, 0, 40); pg.addColorStop(0, "rgba(255,255,255,0.55)"); pg.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = pg; ctx.fillRect(-40, -40, 80, 80); for (let i = 0; i < 3; i++) { ctx.strokeStyle = i === 1 ? G.t.top : G.t.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 18 - i * 4, 30 - i * 6, 0, G.time * (2 + i), G.time * (2 + i) + 4.5); ctx.stroke(); } ctx.restore(); label("Portal", q.x, q.y - 40, G.t.accent); }
   drawPlayer();
+  drawCarried();
   drawChase(G.chase);
   for (const f of G.fx) {
     const k = clamp(f.life / f.max, 0, 1);
@@ -1603,7 +1641,7 @@ let lastFrame = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
   if (!G || $("gameScreen").hidden) return;
-  const dt = Math.min((now - lastFrame) / 1000, 1 / 30); lastFrame = now;
+  const dt = clamp((now - lastFrame) / 1000, 0, 1 / 30); lastFrame = now;
   if (G.hitstop > 0 && !modalOpen) { G.hitstop -= dt; G.shake = Math.max(0, G.shake - dt * 0.5); }
   else if (!modalOpen && !G.done) update(dt);
   else { pressed.jump = pressed.dash = pressed.down = false; }
