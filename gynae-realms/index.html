@@ -1,0 +1,1552 @@
+<title>Gynae Realms</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Cinzel:wght@600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen app. Map of nine realms (scrolls), or the game stage (canvas + HUD overlay + touch pad). Dialogs are illuminated panels over the stage.
+   A single, deliberately dark "night manuscript" look: deep plum panels, brass rules, parchment ink. */
+:root {
+  --bg: #120f1a;
+  --panel: #1f1a2b;
+  --panel-2: #2a2338;
+  --line: #4a3f5c;
+  --ink: #f4ecd8;
+  --muted: #b9ad95;
+  --brass: #e0b25c;
+  --brass-ink: #1a1406;
+  --good: #7fd69a;
+  --good-soft: #17301f;
+  --part: #f2c76b;
+  --part-soft: #33280f;
+  --bad: #ff8f80;
+  --bad-soft: #3a1a18;
+  --font-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; overflow: hidden; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+button { font: inherit; color: inherit; }
+button:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+#app { height: 100%; position: relative; }
+.screen { height: 100%; }
+
+/* ---------- map ---------- */
+#mapScreen { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.map-wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 22px; }
+.masthead { display: flex; flex-direction: column; gap: 6px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--brass); }
+h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(34px, 7vw, 56px); line-height: 1.02; letter-spacing: .02em; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 62ch; }
+.shrine { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; background: linear-gradient(120deg, #2b2140, #1f1a2b 60%); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+.shrine h2 { margin: 0; font-family: var(--font-display); font-size: 20px; letter-spacing: .03em; }
+.shrine p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.shrine .count { font-family: var(--font-mono); color: var(--brass); }
+.realms { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+.realm { display: flex; flex-direction: column; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; cursor: pointer; padding: 0; min-width: 0; transition: transform .15s ease, border-color .15s ease; }
+.realm:hover { transform: translateY(-2px); border-color: var(--brass); }
+.realm .art { height: 74px; position: relative; }
+.realm .art canvas { width: 100%; height: 100%; display: block; }
+.realm .num { position: absolute; left: 12px; top: 10px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; color: #fff; text-shadow: 0 1px 2px #000; }
+.realm .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; }
+.realm .name { font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1.2; text-wrap: balance; }
+.realm .station { font-size: 14px; color: var(--muted); }
+.realm .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+.stars { font-size: 18px; letter-spacing: 2px; color: var(--line); }
+.stars b { color: var(--brass); font-weight: 400; }
+.realm .notes { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 22px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; }
+.legend b { color: var(--ink); }
+.store-note { font-size: 13px; color: var(--muted); }
+
+/* ---------- game ---------- */
+#gameScreen { display: flex; flex-direction: column; }
+#stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#hud { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 10px max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px)); pointer-events: none; }
+.hud-l, .hud-r { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.hud-r { justify-content: flex-end; }
+.hud-btn { pointer-events: auto; background: rgba(18, 15, 26, .78); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 14px; }
+#hearts { display: flex; gap: 3px; background: rgba(18, 15, 26, .6); padding: 5px 8px; border-radius: 8px; }
+#hearts svg { width: 18px; height: 18px; display: block; }
+.chip { background: rgba(18, 15, 26, .72); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; }
+.chip.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.chip.warn { border-color: var(--bad); color: var(--bad); }
+#bossbar { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(420px, 80%); text-align: center; pointer-events: none; }
+#bossName { font-family: var(--font-display); font-weight: 700; font-size: 16px; text-shadow: 0 1px 3px #000; }
+.bb { height: 8px; background: rgba(0, 0, 0, .55); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; margin-top: 4px; }
+.bb i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff8f80, #e0b25c); transition: width .3s; }
+#near { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: min(560px, calc(100% - 24px)); background: rgba(18, 15, 26, .88); border: 1px solid var(--brass); border-radius: 10px; padding: 8px 12px; display: flex; gap: 10px; align-items: center; font-size: 15px; }
+#nearText { min-width: 0; }
+#nearBtn { background: var(--brass); color: var(--brass-ink); border: 0; border-radius: 6px; padding: 5px 12px; font-weight: 700; cursor: pointer; flex: none; }
+#toasts { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; width: min(560px, calc(100% - 24px)); }
+.toast { background: rgba(18, 15, 26, .92); border: 1px solid var(--line); border-left: 4px solid var(--brass); border-radius: 8px; padding: 7px 12px; font-size: 14px; animation: tin .2s ease; }
+.toast.good { border-left-color: var(--good); }
+.toast.bad { border-left-color: var(--bad); }
+@keyframes tin { from { opacity: 0; transform: translateY(-6px); } }
+#pad { display: none; flex: none; justify-content: space-between; align-items: center; gap: 12px; background: #0c0a12; border-top: 1px solid var(--line); padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px)); user-select: none; -webkit-user-select: none; touch-action: none; }
+#pad .grp { display: flex; gap: 12px; }
+.padbtn { width: 68px; height: 68px; border-radius: 50%; background: var(--panel-2); border: 2px solid var(--line); display: grid; place-items: center; cursor: pointer; touch-action: none; }
+.padbtn svg { width: 28px; height: 28px; }
+.padbtn.on { background: var(--brass); border-color: var(--brass); }
+.padbtn.on svg path { fill: var(--brass-ink); }
+.padbtn.jump { width: 84px; height: 84px; }
+@media (pointer: coarse) { #pad { display: flex; } #near { bottom: 8px; } }
+
+/* ---------- dialogs ---------- */
+#modal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(8, 6, 12, .66); padding: 14px max(14px, env(safe-area-inset-right, 0px)) 14px max(14px, env(safe-area-inset-left, 0px)); }
+.panel { width: min(640px, 100%); max-height: 100%; overflow-y: auto; background: var(--panel); border: 1px solid var(--brass); border-radius: 14px; box-shadow: 0 18px 60px rgba(0, 0, 0, .6); padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+.kicker { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--brass); }
+.panel > * { flex-shrink: 0; }
+.panel h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; line-height: 1.2; text-wrap: balance; }
+.panel h3 { margin: 0; font-family: var(--font-display); font-size: 17px; }
+.panel p { margin: 0; }
+.qtext { font-size: 19px; font-weight: 700; line-height: 1.35; text-wrap: balance; }
+.lore { font-size: 17px; line-height: 1.6; }
+.muted { color: var(--muted); }
+.labs { width: 100%; border-collapse: collapse; font-size: 15px; }
+.labs-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+.labs td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.labs tr:last-child td { border-bottom: 0; }
+.labs td:nth-child(2) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; }
+.labs td.f { font-family: var(--font-mono); font-size: 12px; font-weight: 500; text-align: right; width: 2.5em; }
+.labs td.fH { color: var(--bad); } .labs td.fL { color: #8fc3ff; }
+.opts { display: flex; flex-direction: column; gap: 8px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 16px; line-height: 1.35; }
+.opt:hover:not(:disabled) { border-color: var(--brass); }
+.opt .k { font-family: var(--font-mono); font-size: 12px; color: var(--brass); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; flex: none; margin-top: 1px; }
+.opt[aria-pressed="true"] { border-color: var(--brass); background: #3a2f4e; }
+.opt.right { border-color: var(--good); background: var(--good-soft); }
+.opt.wrong { border-color: var(--bad); background: var(--bad-soft); }
+.opt.missed { border-color: var(--good); border-style: dashed; }
+.opt:disabled { cursor: default; }
+.why { background: var(--panel-2); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border-left: 4px solid var(--brass); }
+.why.good { border-left-color: var(--good); } .why.bad { border-left-color: var(--bad); }
+.verdict { font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+.verdict.good { color: var(--good); } .verdict.bad { color: var(--bad); } .verdict.part { color: var(--part); }
+.note { border: 1px dashed var(--part); border-radius: 8px; padding: 9px 12px; font-size: 14px; color: var(--ink); background: var(--part-soft); }
+.note b { color: var(--part); }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { border-radius: 9px; padding: 10px 16px; font-weight: 700; cursor: pointer; border: 1px solid var(--brass); background: transparent; color: var(--brass); font-size: 16px; }
+.btn.primary { background: var(--brass); color: var(--brass-ink); }
+.btn.quiet { border-color: var(--line); color: var(--muted); font-weight: 400; }
+.btn:disabled { opacity: .45; cursor: default; }
+textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-size: 17px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.model { background: #2f2541; border-radius: 10px; padding: 12px 14px; }
+.model .lbl { display: block; font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); margin-bottom: 4px; }
+.list { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+.list li::marker { color: var(--brass); }
+.steps { margin: 0; padding-left: 1.6em; display: flex; flex-direction: column; gap: 6px; }
+.steps li::marker { font-family: var(--font-mono); color: var(--brass); }
+.bigstars { font-size: 40px; letter-spacing: 6px; color: var(--line); line-height: 1; }
+.bigstars b { color: var(--brass); font-weight: 400; }
+.stat { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; font-size: 15px; }
+.stat span:nth-child(even) { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.missed-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.missed-list li { border-left: 3px solid var(--bad); padding-left: 10px; font-size: 15px; }
+.missed-list .a { color: var(--muted); }
+.mic { border-radius: 50%; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; }
+.mic.on { background: var(--bad); border-color: var(--bad); color: #1a0806; }
+.chunks { display: flex; flex-wrap: wrap; gap: 6px; }
+.chunks span { font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--muted); }
+.codex { display: flex; flex-direction: column; gap: 14px; }
+.codex article { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+@media (max-width: 480px) {
+  .panel { padding: 16px 14px; }
+  .panel > * { flex-shrink: 0; }
+.panel h2 { font-size: 21px; }
+  .qtext { font-size: 17px; }
+  .shrine { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .realm, .toast { transition: none; animation: none; } }
+</style>
+
+<div id="app">
+  <section id="mapScreen" class="screen">
+    <div class="map-wrap">
+      <header class="masthead">
+        <span class="eyebrow">Week 1 · General gynae · RANZCOG OSCE</span>
+        <h1>Gynae Realms</h1>
+        <p class="lede">Nine realms, one per station of your week-one deck. Read the signs, answer at the gates, touch the tablets in order, gather the right orbs, then face each realm's guardian in open recall.</p>
+      </header>
+      <div class="shrine">
+        <div>
+          <h2>Review Shrine</h2>
+          <p id="shrineText">Questions you miss come back here on a 1, 3, 7 and 28-day ladder.</p>
+        </div>
+        <button type="button" class="btn primary" id="shrineBtn">Enter the shrine</button>
+      </div>
+      <div class="realms" id="realms"></div>
+      <div class="legend">
+        <span><b>Gates</b> open when you answer. A wrong answer costs a heart, shows the explanation, and the question echoes back before the guardian.</span>
+        <span><b>Tablets and orbs</b> test order and recognition. Touch them in sequence, or gather only the right ones.</span>
+        <span><b>Guardians</b> ask open recall questions. Stomp them, type or dictate your answer, and Claude marks it out of 2.</span>
+        <span><b>Stars</b>: one for clearing the realm, one for two slips or fewer, one for a guardian average of 1.5 or more.</span>
+      </div>
+      <p class="store-note" id="storeNote">Loading your progress…</p>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen" hidden>
+    <div id="stage">
+      <canvas id="cv" aria-label="Game"></canvas>
+      <div id="hud">
+        <div class="hud-l">
+          <button type="button" class="hud-btn" id="pauseBtn" aria-label="Pause">Pause</button>
+          <div id="hearts" aria-label="Hearts"></div>
+          <span class="chip" id="lvlChip"></span>
+        </div>
+        <div class="hud-r">
+          <span class="chip mono" id="meterChip" hidden></span>
+          <span class="chip mono" id="slipChip">Slips 0</span>
+        </div>
+      </div>
+      <div id="bossbar" hidden><span id="bossName"></span><div class="bb"><i id="bossHp"></i></div></div>
+      <div id="near" hidden><span id="nearText"></span><button type="button" id="nearBtn" hidden>Read</button></div>
+      <div id="toasts" aria-live="polite"></div>
+    </div>
+    <div id="pad" aria-label="Touch controls">
+      <div class="grp">
+        <button type="button" class="padbtn" data-k="left" aria-label="Left"><svg viewBox="0 0 24 24"><path d="M15.5 4 7 12l8.5 8 1.5-1.5L10 12l7-6.5z" fill="#f4ecd8"/></svg></button>
+        <button type="button" class="padbtn" data-k="right" aria-label="Right"><svg viewBox="0 0 24 24"><path d="M8.5 4 17 12l-8.5 8L7 18.5 14 12 7 5.5z" fill="#f4ecd8"/></svg></button>
+      </div>
+      <button type="button" class="padbtn jump" data-k="jump" aria-label="Jump"><svg viewBox="0 0 24 24"><path d="M12 4 4 13h5v7h6v-7h5z" fill="#f4ecd8"/></svg></button>
+    </div>
+  </section>
+
+  <div id="modal" hidden><div class="panel" id="panel" role="dialog" aria-modal="true"></div></div>
+</div>
+
+<script>
+/* Gynae Realms content: Week 1 General Gynae (RANZCOG OSCE practice deck, 9 stations).
+   Segment types:
+     sign   {title, text, note?}                 lore you read, then apply
+     gate   {q}                                  door that opens on an answer
+     order  {title, prompt, steps:[[short, full]], why}   touch the tablets in order
+     pick   {title, prompt, good:[[short, full]], bad:[[short, full, why]], why}
+     check                                        checkpoint banner
+     calm   {on}                                  no enemies, softer ambience
+   Gate question kinds:
+     mcq     {q, opts, a, why, note?}
+     results {q, panel:[[label, value, flag]], opts, a, why, note?}   flag: "H" high, "L" low, "" normal
+     multi   {q, opts, a:[...], why}
+   Boss recall: drill ids (from your OSCE Recall Drill) and custom {id, q, a, type}.
+   "note" marks a place where the 2023 deck is out of date and the game teaches current guidance. */
+
+const LEVELS = [
+{
+  id: "s1", name: "Realm of Wandering Moons", station: "Station 1 · PCOS",
+  topic: "Irregular periods, hirsutism and long-term risk",
+  brief: "Miss B, 25, has had increasingly irregular periods for 2 years, now none for 6 months. Acne has returned, hair growth on her chin, nipples and abdomen embarrasses her, and she has gained 20 kg. Mother has type 2 diabetes. BMI 40, acanthosis nigricans, Ferriman-Gallwey 32.",
+  chunks: ["1a Door synthesis: differentials and red flags", "1b Diagnosis: Rotterdam, interpreting androgens", "1c Long-term risks and screening", "1d Management: hair, cycles, fertility"],
+  theme: { sky: ["#1b1740", "#4a3a78"], far: "#2a2457", near: "#3a2f6b", ground: "#2d2246", top: "#8f7fd6", plat: "#5b4a9a", accent: "#e8d9ff", enemy: "#c77dff", enemy2: "#9d4edd", boss: "#7b3fa0", skyline: "hills", particles: "stars", moons: true },
+  boss: { name: "The Androgen Ogre", shape: "ogre", hp: 6,
+    recall: ["k-pc1","k-pc2","k-pc3","k-pc4","k-pc5","k-pc6","k-pc7","k-pc8","k-pc9","k-pc10","k-pc11","k-pc12","k-f2","k-f3","k-f4","k-f5","k-f6"] },
+  segs: [
+    { t: "sign", title: "The Rotterdam rune", text: "PCOS needs 2 of 3: oligo- or anovulation, clinical or biochemical hyperandrogenism, and polycystic ovaries (20 or more follicles per ovary or volume 10 mL or more on TVUS, or a raised AMH in adults). Exclude the mimics first: thyroid disease, hyperprolactinaemia, non-classic CAH, androgen-secreting tumour and Cushing's." },
+    { t: "gate", q: { k: "mcq", q: "Which feature points away from PCOS and towards an androgen-secreting tumour?", opts: ["Rapid virilisation: deeper voice, clitoromegaly", "Acne since her teens", "Hirsutism developing over 2 years", "Weight gain with acanthosis"], a: 0, why: "PCOS gives slowly progressive hirsutism and acne. Rapid onset with virilisation (voice change, clitoromegaly, temporal balding, muscle bulk) or a very high testosterone suggests an ovarian or adrenal tumour: image the ovaries and adrenals." } },
+    { t: "pick", title: "The Mimic Moths", prompt: "Collect the conditions you must exclude before calling it PCOS. Avoid the rest.", good: [["Thyroid", "Thyroid disease (TSH)"], ["Prolactin", "Hyperprolactinaemia (PRL)"], ["NCCAH", "Non-classic CAH (17-OH progesterone)"], ["Tumour", "Androgen-secreting tumour (testosterone, DHEAS)"], ["Cushing's", "Cushing's syndrome (if clinical features)"]], bad: [["Endometriosis", "Endometriosis", "Endometriosis causes pain, not hyperandrogenism or anovulation."], ["Asherman's", "Asherman's syndrome", "Intrauterine adhesions cause amenorrhoea but no androgen excess, and she has no history of curettage."], ["Dermoid", "Ovarian dermoid", "A dermoid doesn't secrete androgens or cause anovulation."]], why: "Each mimic has a simple test: TSH, prolactin, early-morning follicular 17-OH progesterone, testosterone and DHEAS, and screening for Cushing's when there are clinical features." },
+    { t: "check" },
+    { t: "gate", q: { k: "results", q: "Miss B's results are back. What do they show?", panel: [["FSH", "4", ""], ["LH", "16", "H"], ["Prolactin", "400 (0–600)", ""], ["Testosterone", "3.5 (0.2–2.8)", "H"], ["DHEAS", "13 (2–11)", "H"], ["TSH", "2.5", ""], ["Free androgen index", "12 (<5)", "H"], ["SHBG", "10 (20–200)", "L"], ["Ultrasound", "40+ follicles per ovary, endometrium 8 mm", ""]], opts: ["Biochemical hyperandrogenism with polycystic ovaries: PCOS", "Premature ovarian insufficiency", "Hyperprolactinaemia", "Hypothalamic amenorrhoea"], a: 0, why: "With her anovulation, she meets all three Rotterdam criteria. Low-normal FSH rules out POI and prolactin is normal. Hyperinsulinaemia suppresses SHBG, so free testosterone and FAI rise. A raised LH:FSH ratio is typical but isn't a diagnostic criterion. A mildly raised DHEAS is common in PCOS; a markedly raised one suggests an adrenal source." } },
+    { t: "sign", title: "Shadows of the long road", text: "PCOS brings insulin resistance and type 2 diabetes, dyslipidaemia, cardiovascular risk, endometrial hyperplasia and cancer (anovulation leaves oestrogen unopposed), sleep apnoea, and depression and anxiety. Screen with an OGTT, lipids, BP and a mood check. Protect the endometrium with a COCP, cyclical progestogen or an LNG-IUS." },
+    { t: "gate", q: { k: "multi", q: "Which screening does Miss B need for her long-term risks? Pick all that apply.", opts: ["Oral glucose tolerance test", "Fasting lipid profile", "Blood pressure", "Depression and anxiety screen", "CA-125", "Bone density scan"], a: [0, 1, 2, 3], why: "Screen the metabolic and mood complications: OGTT (repeat every 1–3 years depending on risk), lipids, BP and mood. CA-125 and bone density have no role in PCOS." } },
+    { t: "gate", q: { k: "results", q: "Her further tests are back. What do you tell her?", panel: [["OGTT fasting", "4.0", ""], ["OGTT 1 h", "8.0", ""], ["OGTT 2 h", "6.0", ""], ["Cholesterol", "6.6 (<5.5)", "H"], ["LDL", "3.8 (<3.5)", "H"], ["HDL", "1.2", ""], ["Triglyceride", "1.5 (<2.5)", ""]], opts: ["Normal glucose tolerance with dyslipidaemia: lifestyle change, repeat lipids in 6–12 months", "Impaired glucose tolerance: start metformin", "Type 2 diabetes: refer to endocrinology", "All normal: no follow-up"], a: 0, why: "A 2-hour glucose under 7.8 is normal, so repeat the OGTT in 1–3 years. Cholesterol and LDL are raised: start with dietitian input and exercise, then recheck in 6–12 months." } },
+    { t: "check" },
+    { t: "sign", title: "Taming the hair", text: "Start cosmetic measures now (shaving, waxing, laser or electrolysis), because hormonal treatment is slow. Use a COCP, which also regulates cycles, plus spironolactone if needed. Spironolactone needs reliable contraception because it can feminise a male fetus. Judge the response after at least 6 months." },
+    { t: "gate", q: { k: "mcq", q: "How long should she wait before judging hormonal treatment for hirsutism?", opts: ["At least 6 months", "2 weeks", "6 weeks", "2 years"], a: 0, why: "Hair follicles cycle slowly, so allow at least 6 months, and keep using cosmetic measures in the meantime." } },
+    { t: "sign", title: "When she wants a child", text: "Letrozole is first line for ovulation induction in PCOS. If that fails, use low-dose step-up gonadotrophins or laparoscopic ovarian drilling. Lifestyle and weight loss help with all of them.", note: { said: "clomiphene citrate as first line", now: "letrozole first line (2023 international guideline). PPCOS II: live births 27.5% vs 19.1% with clomiphene." } },
+    { t: "gate", q: { k: "mcq", q: "Years later Miss B wants to conceive and is anovulatory. What is first-line ovulation induction?", opts: ["Letrozole", "Clomiphene citrate", "IVF", "Laparoscopic ovarian drilling"], a: 0, why: "Letrozole gives higher ovulation and live-birth rates than clomiphene in PCOS (PPCOS II). Gonadotrophins or drilling come second line, and IVF after that.", note: { said: "clomiphene citrate", now: "letrozole" } } },
+    { t: "order", title: "The Consult Path", prompt: "Touch the tablets in the order you'd run this consultation.", steps: [["History", "Focused history: cycles, androgen symptoms, weight, family history"], ["Examine", "Examine: BMI, BP, Ferriman-Gallwey, acanthosis, virilisation"], ["Bloods + US", "Bloods (FSH, LH, PRL, TSH, testosterone, SHBG, DHEAS) and pelvic US"], ["Explain", "Explain the diagnosis and long-term risks"], ["Plan", "Lifestyle, hirsutism treatment, endometrial protection, future fertility"]], why: "Typical OSCE marking runs history, examination, investigations, explanation, then management. Say each part out loud." }
+  ]
+},
+{
+  id: "s2", name: "The Alchemist's Hatchery", station: "Station 2 · Subfertility, IVF, OHSS",
+  topic: "Couple assessment, tubal factor, IVF and OHSS",
+  brief: "Mr and Mrs Smith (25 and 27) have been trying for 2 years. She had PID with a previous partner, smokes 15 a day, isn't immune to rubella and has just started work in child care. His semen analysis is normal. Imaging shows dense adhesions with both tubes blocked.",
+  chunks: ["2a Couple assessment and optimisation", "2b Tubal factor and hydrosalpinx", "2c IVF in plain language", "2d OHSS"],
+  theme: { sky: ["#0f2a2a", "#2f6b5e"], far: "#18403b", near: "#215249", ground: "#1d3330", top: "#6fd3b0", plat: "#3d8a74", accent: "#d6fff0", enemy: "#9be564", enemy2: "#5fbf3f", boss: "#7ccf5a", skyline: "towers", particles: "bubbles" },
+  boss: { name: "The Swelling Slime", shape: "slime", hp: 6,
+    recall: ["k-f1","k-f7","k-f8","k-f9","k-f10","k-f11","k-f12","k-o1","k-o2","k-o3","k-o4","k-o5","k-o6","k-o7","k-o8","k-o9","k-o10","k-p1","k-p3","k-p5"] },
+  segs: [
+    { t: "sign", title: "Two patients, one problem", text: "Assess both partners. Her: cycle, PID, surgery, smoking, rubella status, folate, cervical screening. Him: mumps orchitis, testicular surgery or trauma, heat, drugs, stress. Optimise before treatment: stop smoking, vaccinate against rubella (then avoid pregnancy for 28 days) and take folate." },
+    { t: "gate", q: { k: "results", q: "Mr Smith's semen analysis (3 days' abstinence). How do you interpret it?", panel: [["Volume", "4.0 mL", ""], ["Concentration", "60 million/mL", ""], ["Progressive motility", "75%", ""], ["Normal forms", "50%", ""], ["White cells", "< 1 million/mL", ""], ["Immunobead", "Negative", ""]], opts: ["Normal by WHO 2021 limits", "Oligozoospermia", "Teratozoospermia", "Antisperm antibodies present"], a: 0, why: "The WHO 2021 lower limits are volume 1.4 mL, concentration 16 million/mL, progressive motility 30% and normal forms 4%. Every value is well above them." } },
+    { t: "gate", q: { k: "mcq", q: "She works in child care and isn't immune to rubella. What do you do before IVF?", opts: ["Give MMR vaccine, then avoid pregnancy for 28 days", "Start IVF now and vaccinate postpartum", "Give rubella immunoglobulin", "Advise her to leave her job"], a: 0, why: "MMR is a live vaccine: give it before conception and avoid pregnancy for 28 days. Her job makes this urgent." } },
+    { t: "pick", title: "The Optimisation Cauldron", prompt: "Collect what to optimise before IVF. Avoid the distractors.", good: [["Stop smoking", "Stop smoking (NRT is fine; avoid varenicline in pregnancy)"], ["Rubella", "Rubella vaccination"], ["Folate", "Folic acid 0.5 mg daily"], ["Screening", "Cervical screening up to date"], ["Stress", "Stress management for him"]], bad: [["Antibiotics", "Routine antibiotics", "There's no active infection. Antibiotics are for prophylaxis at procedures only."], ["Bed rest", "Bed rest after transfer", "Bed rest doesn't improve implantation."], ["Testosterone", "Testosterone for him", "Exogenous testosterone suppresses spermatogenesis."]], why: "Optimising the couple's health is part of the mark sheet: smoking, rubella, folate, screening and wellbeing." },
+    { t: "check" },
+    { t: "sign", title: "The blocked roads", text: "Both tubes are blocked after PID, so the eggs can't meet sperm and IVF is the treatment. Fluid from a hydrosalpinx halves IVF success, so remove the tube (or clip it at the cornu) before embryo transfer." },
+    { t: "gate", q: { k: "mcq", q: "Her HSG shows bilateral hydrosalpinges. What's the best plan?", opts: ["Laparoscopic salpingectomy, then IVF", "IUI with ovarian stimulation", "Clomiphene for 6 cycles", "Tubal flushing, then try naturally"], a: 0, why: "Hydrosalpinx fluid is embryotoxic and lowers implantation. Salpingectomy (or proximal occlusion) before IVF roughly doubles live-birth rates." } },
+    { t: "sign", title: "The Hatchery's recipe", text: "1) Stimulate with FSH, using a GnRH antagonist (or agonist) to prevent early ovulation. 2) Give a trigger injection of hCG, or a GnRH agonist to cut OHSS risk. 3) Collect eggs 34–36 hours later, under sedation with US guidance. 4) Fertilise by IVF or ICSI and culture to day 5. 5) Transfer the embryo, give luteal progesterone, and test for pregnancy about 2 weeks later.", note: { said: "egg collection 36–48 hours after hCG", now: "34–36 hours, before spontaneous ovulation releases the eggs" } },
+    { t: "order", title: "The Hatchery Sequence", prompt: "Touch the IVF steps in order.", steps: [["Stimulate", "Ovarian stimulation: FSH + GnRH antagonist"], ["Trigger", "Trigger: hCG or GnRH agonist"], ["Collect", "Egg collection 34–36 h after the trigger"], ["Fertilise", "Fertilisation: IVF or ICSI"], ["Transfer", "Embryo transfer (day 3–5)"], ["Luteal", "Luteal phase progesterone"], ["Test", "Pregnancy test about 2 weeks later"]], why: "This is how you'd explain IVF to the couple, one step at a time in plain words." },
+    { t: "check" },
+    { t: "sign", title: "The Swelling", text: "OHSS: hCG drives VEGF release from the luteinised ovaries, causing capillary leak, ascites, pleural effusions, haemoconcentration, VTE and renal impairment. Severe disease means haematocrit over 0.45; critical means over 0.55. Treatment is supportive: admit, strict fluid balance, daily weight and girth, LMWH, paracentesis if tense. Avoid NSAIDs and diuretics." },
+    { t: "gate", q: { k: "multi", q: "Which are risk factors for OHSS? Pick all that apply.", opts: ["PCOS or high AMH", "Young age", "Many follicles or high oestradiol", "Previous OHSS", "hCG trigger", "Age over 40"], a: [0, 1, 2, 3, 4], why: "OHSS risk tracks ovarian response: PCOS or high AMH, youth, a high follicle count or oestradiol, previous OHSS, hCG trigger and pregnancy. Older age lowers the risk." } },
+    { t: "gate", q: { k: "results", q: "Two weeks after transfer: distension, breathlessness, 5 kg weight gain. 18 follicles aspirated, peak E2 3000 pg/mL. What's the diagnosis and plan?", panel: [["Haematocrit", "0.48", "H"], ["Sodium", "132", "L"], ["Potassium", "5.2", "H"], ["Albumin", "30 g/L", "L"], ["Ultrasound", "Ascites, enlarged ovaries", ""], ["CXR", "Small bilateral effusions", ""]], opts: ["Severe OHSS: admit, fluid balance, daily weight and girth, LMWH, paracentesis if tense", "Mild OHSS: send home with furosemide", "Ectopic pregnancy: laparoscopy now", "Severe OHSS: give NSAIDs for pain"], a: 0, why: "A haematocrit over 0.45 with electrolyte disturbance and effusions makes this severe. Avoid diuretics, which worsen intravascular depletion, and NSAIDs, which add renal risk." } },
+    { t: "pick", title: "The Diagnostic Flasks", prompt: "Collect the investigations for suspected OHSS.", good: [["Haematocrit", "FBC with haematocrit"], ["EUC", "Electrolytes and renal function"], ["LFTs", "Liver function tests"], ["Coags", "Coagulation studies"], ["Pelvic US", "Pelvic and abdominal ultrasound"], ["CXR", "Chest X-ray if breathless"], ["βhCG", "βhCG"]], bad: [["CA-125", "CA-125", "CA-125 rises with ascites and adds nothing."], ["HSG", "Hysterosalpingogram", "HSG has no place in acute OHSS."]], why: "Assess haemoconcentration, renal and liver function, coagulation, ascites and effusions, and whether she is pregnant." }
+  ]
+},
+{
+  id: "s3", name: "The Crimson Floodlands", station: "Station 3 · Heavy menstrual bleeding",
+  topic: "Heavy painful periods, likely adenomyosis",
+  brief: "Sharon, 42, has had heavy painful periods for 3 years. She smokes 20 a day, had a DVT after a car accident 2 years ago and is sterilised. She looks pale, and her uterus is bulky, tender and 10-week size.",
+  chunks: ["3a Door synthesis: PALM-COEIN, malignancy, anaemia", "3b Iron deficiency", "3c Medical options against her contraindications", "3d Surgical options", "3e Hysterectomy consent and care"],
+  theme: { sky: ["#2a0d12", "#7a2b2b"], far: "#4a1a1e", near: "#5e2226", ground: "#3a1d1d", top: "#e0675a", plat: "#8a3a33", accent: "#ffd9cf", enemy: "#ff8a5c", enemy2: "#d9480f", boss: "#9c4a3a", skyline: "hills", particles: "drops" },
+  boss: { name: "The Bulky Golem", shape: "golem", hp: 6,
+    recall: ["k-m1","k-m2","k-m3","k-m4","k-m5","k-m9","k-m11","c3a","c3b","c3c"] },
+  segs: [
+    { t: "sign", title: "The flood's sources", text: "Classify heavy bleeding with PALM-COEIN: Polyp, Adenomyosis, Leiomyoma, Malignancy or hyperplasia; Coagulopathy, Ovulatory, Endometrial, Iatrogenic, Not yet classified. At 42 with persistent symptoms, sample the endometrium. Check FBC and ferritin, and do a TVUS." },
+    { t: "gate", q: { k: "multi", q: "Which of Sharon's features constrain your medical options? Pick all that apply.", opts: ["Previous DVT", "Smoker over 35", "Sterilised", "Bulky uterus"], a: [0, 1], why: "Previous VTE, and smoking over 35, both rule out the COCP. Her VTE history also means caution with tranexamic acid. Sterilisation and a bulky uterus don't restrict medical treatment, though a bulky uterus makes ablation less likely to work." } },
+    { t: "gate", q: { k: "mcq", q: "Which is the best first-line hormonal treatment for Sharon?", opts: ["LNG-IUS (Mirena)", "Combined oral contraceptive pill", "Tranexamic acid", "Danazol"], a: 0, why: "The LNG-IUS is the most effective medical treatment for HMB and is safe with her VTE history. The COCP is contraindicated, TXA needs caution, and danazol is now rarely used." } },
+    { t: "check" },
+    { t: "gate", q: { k: "results", q: "Six weeks on an NSAID with no improvement. What's the most likely picture?", panel: [["Hb", "89 g/L, microcytic", "L"], ["Uterus", "Globally enlarged, 10 cm", ""], ["Focal lesions", "None", ""], ["Adnexae", "Normal", ""]], opts: ["Adenomyosis with iron-deficiency anaemia", "Submucosal fibroid", "Endometrial cancer", "Coagulopathy"], a: 0, why: "A globally enlarged, tender uterus with dysmenorrhoea, HMB and no focal fibroid suggests adenomyosis. The microcytic anaemia is iron deficiency." } },
+    { t: "sign", title: "Iron in the riverbed", text: "Ferritin under 30 µg/L means iron deficiency. Give oral iron on alternate days for better absorption, or IV iron if she can't tolerate it, needs fast correction or has surgery coming. Correct anaemia before elective surgery." },
+    { t: "pick", title: "The Safe Remedies", prompt: "Collect the medical options that are safe for Sharon.", good: [["Mirena", "LNG-IUS (Mirena)"], ["Oral progestogen", "Oral norethisterone or MPA"], ["Depot", "Depot medroxyprogesterone"], ["GnRHa", "GnRH analogue with add-back"], ["NSAID", "Mefenamic acid"]], bad: [["COCP", "Combined pill", "Contraindicated: previous DVT, and a smoker over 35."], ["Danazol", "Danazol", "Rarely used now: androgenic side effects (acne, weight gain, voice change, lipids)."], ["Ulipristal", "Ulipristal acetate", "Restricted because of rare serious liver injury."]], why: "Progestogens, GnRH analogues and NSAIDs are all safe for her. Tranexamic acid isn't absolutely contraindicated, but use caution after a DVT." },
+    { t: "sign", title: "A relic: danazol", text: "Your deck lists danazol. It's a synthetic androgen that works, but acne, weight gain, hirsutism, voice deepening and adverse lipids mean it's rarely used now.", note: { said: "danazol as a second-line medical option", now: "rarely used; prefer the LNG-IUS, progestogens or a GnRH analogue with add-back" } },
+    { t: "check" },
+    { t: "gate", q: { k: "mcq", q: "Why is endometrial ablation likely to fail for Sharon?", opts: ["Her uterus is bulky from adenomyosis", "She is sterilised", "She smokes", "She is 42"], a: 0, why: "Adenomyosis lies deep in the myometrium, beyond ablation's reach, and a large cavity raises failure rates. Many go on to hysterectomy." } },
+    { t: "sign", title: "Keep the ovaries", text: "At hysterectomy, conserve normal ovaries under 65. Removing them increases all-cause mortality, cardiovascular disease, osteoporosis, dementia and depression. Offer opportunistic salpingectomy instead: removing the tubes lowers ovarian cancer risk." },
+    { t: "gate", q: { k: "mcq", q: "Sharon, 42, opts for hysterectomy with no ovarian risk factors. What do you do with the adnexae?", opts: ["Remove the tubes, conserve the ovaries", "Remove both tubes and ovaries", "Remove the ovaries because she's over 40", "Leave the tubes and ovaries"], a: 0, why: "RANZCOG advises ovarian conservation under 65, and opportunistic salpingectomy reduces ovarian cancer risk." } },
+    { t: "gate", q: { k: "multi", q: "Which risks should her hysterectomy consent include? Pick all that apply.", opts: ["Bleeding and transfusion", "Infection", "VTE (high risk for her)", "Bladder, bowel or ureter injury", "Conversion to laparotomy", "Certain early menopause"], a: [0, 1, 2, 3, 4], why: "With her ovaries conserved, menopause isn't certain, though ovarian failure may come a little earlier. Her previous DVT makes VTE prophylaxis essential." } },
+    { t: "order", title: "The Road to Theatre", prompt: "Touch the steps in order to get Sharon safely through surgery.", steps: [["Iron", "Correct anaemia (IV iron)"], ["Smoking", "Stop smoking"], ["Consent", "Consent with real risks"], ["VTE plan", "VTE plan: LMWH and stockings"], ["Surgery", "Surgery: laparoscopic or abdominal route"], ["Mobilise", "Early mobilisation and 6-week review"]], why: "Pre-op optimisation, consent, VTE prophylaxis (she has had a DVT), the operation, then recovery." }
+  ]
+},
+{
+  id: "s4", name: "The Thornwood Labyrinth", station: "Station 4 · Endometriosis",
+  topic: "Dysmenorrhoea, dyspareunia, laparoscopy and the ureter",
+  brief: "Sarah, 24, has worsening dysmenorrhoea and deep dyspareunia despite NSAIDs and a continuous COCP. She misses 2–3 days of work a month. Her pelvic US is normal, and she is tender over the uterosacral ligaments.",
+  chunks: ["4a Door synthesis and imaging", "4b Empirical medical treatment", "4c Laparoscopy consent", "4d Ureter safety", "4e Post-op suppression and fertility"],
+  theme: { sky: ["#0e1f14", "#2e4a2a"], far: "#1a3320", near: "#22402a", ground: "#2a2418", top: "#7fb069", plat: "#5a4630", accent: "#e6f5d0", enemy: "#a3b18a", enemy2: "#6b8f4e", boss: "#5a3a22", skyline: "trees", particles: "leaves", river: true },
+  boss: { name: "The Chocolate Wyrm", shape: "wyrm", hp: 6,
+    recall: ["k-u1","k-my5","k-u2","c4a","c4b","c4c","c4d","c4e"] },
+  segs: [
+    { t: "sign", title: "Reading the thorns", text: "Endometriosis brings dysmenorrhoea, deep dyspareunia, dyschezia, cyclical bladder pain, chronic pelvic pain and subfertility. On examination: uterosacral tenderness or nodularity, a fixed retroverted uterus, adnexal masses. A normal US doesn't exclude superficial disease. Expert TVUS or MRI looks for endometriomas and deep disease." },
+    { t: "gate", q: { k: "mcq", q: "Which examination finding most suggests endometriosis?", opts: ["Tender, nodular uterosacral ligaments", "Mobile, non-tender uterus", "Cervical excitation with fever", "Smooth, globally enlarged uterus"], a: 0, why: "Uterosacral tenderness or nodularity suggests deep disease. Fever with cervical excitation suggests PID, and a smooth enlarged uterus suggests adenomyosis." } },
+    { t: "gate", q: { k: "mcq", q: "Sarah's pelvic ultrasound was normal. What does that mean?", opts: ["It doesn't exclude endometriosis", "It excludes endometriosis", "Her pain is likely functional", "She needs a CT scan"], a: 0, why: "Superficial peritoneal disease isn't visible on ultrasound. A normal scan argues against endometriomas and, with an expert scan, against deep disease, but not against endometriosis." } },
+    { t: "pick", title: "The Symptom Thicket", prompt: "Collect the symptoms of endometriosis.", good: [["Dysmenorrhoea", "Dysmenorrhoea"], ["Deep dyspareunia", "Deep dyspareunia"], ["Dyschezia", "Painful defecation, often cyclical"], ["Dysuria", "Cyclical bladder pain"], ["Subfertility", "Subfertility"], ["Pelvic pain", "Chronic pelvic pain"]], bad: [["Fever", "Fever", "Fever suggests infection (PID or tubo-ovarian abscess)."], ["Weight loss", "Weight loss", "Unexplained weight loss is a red flag for malignancy, not endometriosis."]], why: "Remember the 4 Ds (dysmenorrhoea, dyspareunia, dyschezia, dysuria), plus pelvic pain and subfertility." },
+    { t: "check" },
+    { t: "sign", title: "Treat before you cut", text: "Empirical hormonal treatment is reasonable without a surgical diagnosis: COCP (continuous is fine), progestogens (dienogest, norethisterone, LNG-IUS), or a GnRH analogue with add-back. Offer laparoscopy when medical treatment fails, fertility is the goal, or imaging shows disease needing excision.", note: { said: "don't start a GnRH agonist without a laparoscopic diagnosis", now: "ESHRE 2022 supports empirical hormonal treatment based on clinical and imaging diagnosis" } },
+    { t: "gate", q: { k: "mcq", q: "Which treatment needs add-back therapy?", opts: ["GnRH agonist", "Continuous COCP", "LNG-IUS", "Mefenamic acid"], a: 0, why: "A GnRH agonist causes a hypo-oestrogenic state with bone loss and vasomotor symptoms. Give add-back (for example tibolone or oestrogen with progestogen) from the start." } },
+    { t: "sign", title: "Laparoscopy consent", text: "This is day surgery under general anaesthetic, with small ports to inspect the pelvis and excise disease. Risks: bleeding, infection, VTE, and injury to bladder, bowel, ureter or vessels (under 1%), plus conversion to laparotomy. Possible outcomes: nothing found, disease treated, or a second operation (for example after bowel preparation)." },
+    { t: "check" },
+    { t: "sign", title: "The River Ureter", text: "The ureter crosses the iliac vessels at their bifurcation at the pelvic brim, runs down the pelvic sidewall on the medial leaf of the broad ligament, and passes under the uterine artery about 1.5–2 cm lateral to the cervix (water under the bridge). It then runs on to the anterior vaginal fornix and the bladder trigone." },
+    { t: "order", title: "Follow the River", prompt: "Touch the ureter's landmarks from top to bottom.", steps: [["Pelvic brim", "Crosses the iliac bifurcation at the pelvic brim"], ["Broad ligament", "Runs on the medial leaf of the broad ligament"], ["Under the artery", "Passes under the uterine artery"], ["By the cervix", "About 1.5–2 cm lateral to the cervix"], ["Trigone", "Enters the bladder trigone"]], why: "Knowing this course lets you find the ureter before you cut. The three classic injury sites are the pelvic brim, under the uterine artery, and the vaginal angle." },
+    { t: "gate", q: { k: "multi", q: "You're excising disease on the left pelvic sidewall. How do you protect the ureter? Pick all that apply.", opts: ["Identify it before cutting", "Open the retroperitoneum and trace it", "Confirm by peristalsis", "Keep diathermy and its lateral spread away", "Consider preoperative ureteric stents", "Cut first, check afterwards"], a: [0, 1, 2, 3, 4], why: "Get good views and haemostasis. Open the peritoneum lateral to the infundibulopelvic ligament, find the ureter at the brim and follow it down. Peristalsis confirms it. Stents help with deep disease." } },
+    { t: "gate", q: { k: "mcq", q: "Where does the uterine artery cross the ureter?", opts: ["Over it, about 1.5–2 cm lateral to the cervix", "Under it at the pelvic brim", "Medial to the cervix", "In the ovarian fossa"], a: 0, why: "Water under the bridge: the ureter (water) passes under the uterine artery (bridge), a common site of injury when clamping at hysterectomy." } },
+    { t: "pick", title: "Guardians After Surgery", prompt: "Sarah is better but not right after excision. Collect the options for ongoing suppression.", good: [["COCP", "Continuous COCP"], ["Dienogest", "Dienogest or norethisterone"], ["Mirena", "LNG-IUS"], ["Depot", "Depot medroxyprogesterone"], ["GnRHa + add-back", "GnRH analogue with add-back"]], bad: [["Nothing", "No treatment, repeat surgery yearly", "Repeated surgery raises the risk of adhesions and loss of ovarian reserve. Suppression lowers recurrence."], ["Primrose oil", "Evening primrose oil", "There's no evidence for it."]], why: "Postoperative hormonal suppression reduces recurrence. Refer for fertility care when she wants to conceive." }
+  ]
+},
+{
+  id: "s5", name: "The Dungeon of Complications", station: "Station 5 · Ovarian cystectomy",
+  topic: "Consent, bowel injury, PE and thrombophilia",
+  brief: "Mrs Peters, 33, is booked for laparoscopic cystectomies: a 7 cm right dermoid and a 4 cm left endometrioma. She is trying to conceive, takes no folate, and had a laparotomy for bowel injury after a car accident. She has a midline scar to the xiphisternum.",
+  chunks: ["5a Pre-op consent and entry", "5b Bowel injury", "5c Post-op PE", "5d Thrombophilia and future pregnancy", "5e Open disclosure"],
+  theme: { sky: ["#141018", "#2e2638"], far: "#221c2a", near: "#2c2436", ground: "#26222c", top: "#9a8fb0", plat: "#4a4258", accent: "#f0e6ff", enemy: "#c0c0d8", enemy2: "#8888a8", boss: "#6a5a8a", skyline: "cave", particles: "dust", torches: true },
+  boss: { name: "The Clot Wraith", shape: "wraith", hp: 6,
+    recall: ["k-po1","k-po2","k-po3","k-po4","k-po5","k-po6","k-po7","k-u2","k-u5","c5a","c5b","c5c","c5d","c5e"] },
+  segs: [
+    { t: "sign", title: "Enter with care", text: "After a midline laparotomy, expect periumbilical adhesions. Use Palmer's point: left upper quadrant, about 3 cm below the costal margin in the midclavicular line. Decompress the stomach first." },
+    { t: "gate", q: { k: "mcq", q: "Where do you enter her abdomen?", opts: ["Palmer's point, left upper quadrant", "Umbilical Veress", "Suprapubic Veress", "Through the old midline scar"], a: 0, why: "Bowel is likely adherent under a midline scar. Palmer's point is usually free of adhesions." } },
+    { t: "gate", q: { k: "multi", q: "Which specific risks belong in her consent? Pick all that apply.", opts: ["Cyst rupture and spillage", "Reduced ovarian reserve, possible loss of an ovary", "Bowel injury from adhesions", "Conversion to laparotomy", "Endometriosis that needs further surgery", "Certain infertility"], a: [0, 1, 2, 3, 4], why: "Dermoid spillage can cause chemical peritonitis, so wash it out. Endometrioma surgery lowers AMH. Adhesions raise the risk of bowel injury. Infertility isn't certain, and most women conceive." } },
+    { t: "check" },
+    { t: "sign", title: "The Bowel Breach", text: "If you injure the bowel, stay calm. Tell the anaesthetist and team, call the general or colorectal surgeon, and give broad-spectrum antibiotics (cefazolin plus metronidazole). Mark the injury and free the segment. Repair it in two layers, tension-free (laparoscopic or open), then wash out with warm saline. Document it and tell her and her family honestly (open disclosure)." },
+    { t: "gate", q: { k: "mcq", q: "Your registrar points out a 1 cm full-thickness injury to the sigmoid colon. What's your first action?", opts: ["Stop, tell the anaesthetist and team, and call for surgical help", "Finish the cystectomy, then look at it", "Close and observe her on the ward", "Leave it, small injuries seal"], a: 0, why: "Recognise it, communicate and get help. An unrecognised bowel injury presents days later with peritonitis and sepsis." } },
+    { t: "order", title: "Sealing the Breach", prompt: "Touch the steps of bowel-injury management in order.", steps: [["Tell team", "Tell the anaesthetist and team"], ["Call surgeon", "Call a general or colorectal surgeon"], ["Antibiotics", "IV antibiotics (cefazolin + metronidazole)"], ["Repair", "Mobilise and repair in two layers"], ["Washout", "Washout with warm saline"], ["Disclose", "Document and open disclosure"]], why: "Communicate, get help, prevent sepsis, repair, wash out, then disclose." },
+    { t: "check" },
+    { t: "sign", title: "The Clot Wraith stirs", text: "On day 2 she has a swollen calf and is breathless. Give oxygen and get an ECG, ABG and CXR, then CTPA (or V/Q). Don't use D-dimer after surgery: it's always raised. Start therapeutic LMWH straight away if there's no contraindication (enoxaparin 1 mg/kg twice daily or 1.5 mg/kg once daily). Treat a provoked VTE for 3 months." },
+    { t: "gate", q: { k: "results", q: "Day 2: painful swollen right calf and breathlessness. What do you do?", panel: [["Pulse", "90", ""], ["Sats", "94% on air", "L"], ["Resp rate", "23", "H"], ["Calf", "Right 4 cm bigger than left", "H"]], opts: ["Oxygen, start therapeutic LMWH, confirm with CTPA and leg duplex", "Prophylactic enoxaparin and wait", "Thrombolysis now", "Check D-dimer first"], a: 0, why: "Suspected PE with no contraindication: treat while you confirm. D-dimer is useless after surgery. Reserve thrombolysis for massive PE with shock." } },
+    { t: "pick", title: "The Wraith Hunt", prompt: "Collect the PE work-up. Avoid the useless tests.", good: [["Oxygen", "Oxygen"], ["ECG", "ECG"], ["ABG", "Arterial blood gas"], ["CXR", "Chest X-ray"], ["CTPA", "CTPA or V/Q scan"], ["FBC + coags", "FBC, coagulation and renal function before anticoagulation"]], bad: [["D-dimer", "D-dimer", "It's raised after any surgery, so it can't rule PE in or out here."], ["CA-125", "CA-125", "It has no role in PE."]], why: "Stabilise, look for other causes (ECG, CXR), confirm with imaging, and check baseline bloods before anticoagulation." },
+    { t: "check" },
+    { t: "sign", title: "The Inherited Curse", text: "Heterozygous factor V Leiden plus a previous VTE makes her high risk in pregnancy: plan antenatal LMWH and 6 weeks postnatal. Warfarin causes embryopathy at 6–12 weeks, so finish the course and switch to LMWH before trying to conceive. Plan delivery with haematology and anaesthetics, and stop prophylaxis before labour or induction." },
+    { t: "gate", q: { k: "results", q: "Six weeks later she still wants to conceive. Results below. What do you advise?", panel: [["Factor V Leiden", "Heterozygous", "H"], ["Antithrombin, protein C and S", "Normal", ""], ["Prothrombin gene", "Absent", ""], ["Lupus anticoagulant", "Negative", ""], ["Anticardiolipin", "Negative", ""], ["Rubella", "Non-immune", "L"]], opts: ["Finish warfarin, then MMR and folate; antenatal and 6-week postnatal LMWH", "Conceive now, continue warfarin", "No prophylaxis needed: heterozygous only", "Aspirin alone in pregnancy"], a: 0, why: "Previous VTE plus thrombophilia means antenatal and postnatal LMWH. Warfarin is teratogenic. She also needs MMR (then avoid pregnancy for 28 days) and folic acid." } },
+    { t: "sign", title: "Open disclosure", text: "Acknowledge what happened, say sorry, explain the facts (the bowel injury and the PE), what has been done and what happens next. Ask how it has affected her and her family, give her a contact person, and document the conversation." }
+  ]
+},
+{
+  id: "s6", name: "The Fainting Spire", station: "Station 6 · Collapse at IUD insertion",
+  topic: "Vasovagal collapse (cervical shock) and emergencies",
+  brief: "Mrs C is having a Mirena inserted in the office for pelvic pain. You gave a cervical block. Sounding was painful, but she asked you to go on. As the Mirena passes, she cries out and goes limp. HR 40, BP 100/60.",
+  chunks: ["6a Emergency algorithm: DRSABCD, atropine, anaphylaxis", "6b Prevention and debrief"],
+  theme: { sky: ["#0b1a2e", "#3a5a8a"], far: "#16304e", near: "#1f3d60", ground: "#1c2a3c", top: "#8ec5ff", plat: "#3d6a9a", accent: "#e0f0ff", enemy: "#b8d8ff", enemy2: "#6ea8e0", boss: "#46648a", skyline: "spires", particles: "snow" },
+  meter: { label: "Mrs C heart rate", from: 72, to: 30, unit: "bpm", warnBelow: 50 },
+  boss: { name: "The Vagal Shade", shape: "shade", hp: 6,
+    recall: ["c6a","c6b","c6c","c6d","c6e","c6f"] },
+  segs: [
+    { t: "sign", title: "Cervical shock", text: "Stretching the cervix triggers a vagal reflex: bradycardia, hypotension, pallor and syncope. Local anaesthetic can also cause anaphylaxis, so think about both." },
+    { t: "gate", q: { k: "mcq", q: "Mrs C goes limp. HR 40, BP 100/60. What do you do first?", opts: ["Stop, remove the instruments, call for help, lay her flat with legs raised", "Finish the insertion quickly", "Give IM adrenaline at once", "Sit her upright"], a: 0, why: "Remove the stimulus, get help, and improve venous return. Then go through ABC." } },
+    { t: "order", title: "Climb the Spire", prompt: "Touch the DRSABCD runes in order.", steps: [["D", "Danger: check it's safe (her legs, the instruments)"], ["R", "Response: is she responding?"], ["S", "Send for help: press the emergency bell"], ["A", "Airway: jaw thrust, Guedel airway"], ["B", "Breathing: high-flow oxygen, sats"], ["C", "Circulation: legs up, IV access, fluids"], ["D", "Defibrillation: attach the AED"]], why: "DRSABCD is the Australian resuscitation sequence. Say it aloud as you act." },
+    { t: "check" },
+    { t: "sign", title: "When the heart stays slow", text: "If she stays profoundly bradycardic and unconscious, give atropine 600 micrograms IV (500–600), repeating up to 3 mg. Attach the AED and keep IV access and fluids running. If she has anaphylaxis (tachycardia, urticaria, wheeze, angioedema), give adrenaline 0.5 mg IM (0.5 mL of 1:1000) into the anterolateral thigh and repeat every 5 minutes as needed." },
+    { t: "gate", q: { k: "mcq", q: "Two minutes later she's still unconscious with HR 30. Which drug and dose?", opts: ["Atropine 600 micrograms IV", "Atropine 6 mg IV", "Adrenaline 1 mg IV push", "Atropine 60 micrograms IM"], a: 0, why: "Atropine 500–600 micrograms IV, repeated to a maximum of 3 mg, blocks the vagal effect on the heart." } },
+    { t: "gate", q: { k: "multi", q: "Which features point to anaphylaxis rather than a vasovagal episode? Pick all that apply.", opts: ["Tachycardia", "Urticaria or flushing", "Wheeze or stridor", "Angioedema", "Bradycardia with pallor", "Quick recovery lying flat"], a: [0, 1, 2, 3], why: "A vasovagal episode is slow, pale, and recovers when she lies flat. Anaphylaxis is fast, flushed, and has skin or airway signs." } },
+    { t: "gate", q: { k: "mcq", q: "What's the adrenaline dose for adult anaphylaxis?", opts: ["0.5 mg IM (0.5 mL of 1:1000)", "1 mg IV of 1:1000", "0.05 mg IM", "5 mg IM"], a: 0, why: "Give 0.5 mg IM into the anterolateral thigh and repeat every 5 minutes. Never give 1:1000 IV." } },
+    { t: "check" },
+    { t: "pick", title: "After the Storm", prompt: "She recovers. Collect what you do next.", good: [["Explain", "Explain what happened"], ["Observe", "Observe until fully recovered"], ["Document", "Document the event"], ["Incident report", "Lodge an incident report"], ["Plan", "Plan analgesia or GA next time"]], bad: [["Drive home", "Let her drive home straight away", "She needs observation and someone to take her home."], ["Skip notes", "No need to document", "Every emergency needs documenting and reporting."]], why: "Debrief her and the team, document, report, and plan how to prevent it next time." },
+    { t: "sign", title: "Prevention", text: "Give an NSAID beforehand, use a cervical or paracervical block or lidocaine gel, have an experienced operator, talk her through it, and keep her lying down. Know who is at risk: previous vasovagal episodes, nulliparity, anxiety, a stenosed cervix." }
+  ]
+},
+{
+  id: "s7", name: "The Twisted Tower", station: "Station 7 · Adnexal mass in pregnancy",
+  topic: "Complex mass, torsion and second-trimester loss",
+  brief: "Adel, 27, primigravida at 8+4 weeks, has a 10 × 12 × 7 cm complex right adnexal mass that looks like a dermoid. BMI 38. At 13+6 weeks she presents with sudden severe right-sided pain. At her 20-week anatomy scan there is no heartbeat (biometry 18+3).",
+  chunks: ["7a Door synthesis: differentials, markers, BMI", "7b Timing of surgery", "7c Torsion in pregnancy", "7d Second-trimester fetal death"],
+  theme: { sky: ["#1e1430", "#6a4a7a"], far: "#2e2042", near: "#3c2a52", ground: "#2e2436", top: "#d8a7c9", plat: "#6a4a6e", accent: "#ffe8f6", enemy: "#e08ab8", enemy2: "#b05a8e", boss: "#8a4a7a", skyline: "towers", particles: "petals" },
+  boss: { name: "The Torsion Serpent", shape: "serpent", hp: 6,
+    recall: ["c7a","c7b","c7c","c7d","c7e","c7f","c7g"] },
+  segs: [
+    { t: "sign", title: "Masses in the tower", text: "About 5% of pregnancies have an adnexal mass. Most simple cysts under 5 cm are corpus luteum cysts and resolve. Complex or persistent masses need repeat US and MDT planning. Tumour markers help little because pregnancy itself raises CA-125, AFP and hCG." },
+    { t: "pick", title: "The Differential Chamber", prompt: "Collect the differentials for a complex adnexal mass in pregnancy.", good: [["Dermoid", "Mature cystic teratoma"], ["Endometrioma", "Endometrioma"], ["Haemorrhagic cyst", "Haemorrhagic corpus luteum"], ["Epithelial tumour", "Borderline or epithelial tumour"], ["Paratubal cyst", "Paratubal cyst or hydrosalpinx"], ["Fibroid", "Pedunculated fibroid"]], bad: [["Praevia", "Placenta praevia", "That's a placental position, not an adnexal mass."], ["Polyhydramnios", "Polyhydramnios", "Excess liquor is intrauterine."]], why: "Also think of non-gynae causes: pelvic kidney, appendix mass, diverticular disease." },
+    { t: "gate", q: { k: "mcq", q: "Why are tumour markers of limited use here?", opts: ["Pregnancy itself raises CA-125, AFP and hCG", "They're only valid after 50", "Dermoids never raise markers", "They take 6 weeks"], a: 0, why: "Pregnancy raises CA-125 in the first trimester, AFP from the fetus, and hCG. LDH can help with dysgerminoma." } },
+    { t: "check" },
+    { t: "sign", title: "When to climb", text: "Plan elective surgery in the second trimester (about 14–20 weeks). By then the placenta has taken over from the corpus luteum (from about 10 weeks), the miscarriage risk is lower, and the uterus is still small. If you remove the corpus luteum before 10 weeks, give progesterone support. Explain the signs of torsion while she waits." },
+    { t: "gate", q: { k: "mcq", q: "A persistent 10 cm complex mass at 8 weeks. When should elective surgery be?", opts: ["Early second trimester, after 14 weeks", "Now, at 8 weeks", "Third trimester", "Always postpartum"], a: 0, why: "The early second trimester avoids the corpus luteum phase and the peak miscarriage window while access is still easy. A mass this size carries real risk of torsion, so don't wait until after delivery." } },
+    { t: "sign", title: "Pregnancy at BMI 38", text: "Give high-dose folate (5 mg), screen early for GDM, assess VTE risk, arrange an anaesthetic review, and plan serial growth scans. Give aspirin if there are other pre-eclampsia risk factors. Involve the MDT: obstetrician, anaesthetist and midwife." },
+    { t: "check" },
+    { t: "sign", title: "The twisting", text: "Torsion causes sudden severe unilateral pain, nausea and vomiting, and exquisite adnexal tenderness. The main differential is appendicitis. Normal Doppler flow does NOT exclude torsion: it's a clinical diagnosis. Give IV access, analgesia and bloods (FBC, group and screen, CRP), keep her nil by mouth, and take her for urgent laparoscopy or laparotomy to untwist the ovary and remove the cyst." },
+    { t: "gate", q: { k: "multi", q: "Which features fit torsion at 13+6 weeks? Pick all that apply.", opts: ["Sudden severe unilateral pain", "Nausea and vomiting", "Exquisite adnexal tenderness", "Tachycardia", "Known adnexal mass", "Pain developing gradually over weeks"], a: [0, 1, 2, 3, 4], why: "Torsion is sudden. A known large mass (especially a dermoid) is the biggest risk factor." } },
+    { t: "gate", q: { k: "mcq", q: "Ultrasound shows normal Doppler flow but you still suspect torsion. What next?", opts: ["Urgent laparoscopy or laparotomy", "Reassure: normal flow excludes torsion", "MRI next week", "Repeat ultrasound in 4 weeks"], a: 0, why: "Flow can persist in partial or intermittent torsion. Delay costs the ovary, and laparoscopy is safe in pregnancy." } },
+    { t: "calm", on: true },
+    { t: "sign", title: "The quiet garden", text: "At 20 weeks there is no heartbeat. Breaking the news: choose a private room, have her support person present, give a warning shot, then say it plainly ('I'm so sorry, your baby has died'). Pause and allow silence and emotion. Offer a second scan to confirm. Then discuss the options and support: SANDS, a social worker, and follow-up." },
+    { t: "order", title: "Words in the Garden", prompt: "Touch the steps of breaking bad news in order.", steps: [["Setting", "Private room, support person present"], ["Warning shot", "Warning shot: 'I have some difficult news'"], ["Say it plainly", "Say it plainly: 'your baby has died'"], ["Pause", "Pause, allow silence and emotion"], ["Options", "Discuss options when she's ready"], ["Support", "Arrange support and follow-up"]], why: "SPIKES-style structure. Avoid jargon like 'fetal demise' when speaking to her." },
+    { t: "gate", q: { k: "mcq", q: "How should you manage a second-trimester fetal death?", opts: ["Expectant, medical (mifepristone then misoprostol) or surgical D&E, with her wellbeing first", "Immediate caesarean section", "Expectant only", "Surgical evacuation is mandatory"], a: 0, why: "She chooses among the options. Medical induction uses mifepristone 200 mg, then misoprostol 36–48 hours later. D&E is for experienced operators. Expedite if she becomes unwell (infection, coagulopathy)." } },
+    { t: "gate", q: { k: "multi", q: "Which investigations do you offer after a second-trimester loss? Pick all that apply.", opts: ["Kleihauer", "Infection screen (TORCH, parvovirus, syphilis)", "Antiphospholipid antibodies", "TFT and HbA1c", "Postmortem, placental histology and karyotype", "CA-125"], a: [0, 1, 2, 3, 4], why: "Look for feto-maternal haemorrhage, infection, antiphospholipid syndrome and maternal disease. Offer a postmortem with consent. Placental histology and genetics often find the cause." } },
+    { t: "calm", on: false }
+  ]
+},
+{
+  id: "s8", name: "The Sunken Grotto", station: "Station 8 · Submucosal fibroid",
+  topic: "Hysteroscopic resection, fluid overload and menopause",
+  brief: "Mrs B, perimenopausal, has worsening periods and a 2.5 cm posterior submucosal fibroid. Her mother had endometrial cancer at 75. She sees a naturopath and wants minimally invasive treatment. Later, during resection, the scrub nurse reports a 1500 mL glycine deficit.",
+  chunks: ["8a Door synthesis: AUB around menopause", "8b Fibroid options", "8c Fluid deficit emergency", "8d MHT counselling"],
+  theme: { sky: ["#04202a", "#0e5a6a"], far: "#0a3440", near: "#0f4452", ground: "#123038", top: "#5fd3d3", plat: "#2a7a80", accent: "#dcffff", enemy: "#7fe8e0", enemy2: "#2ab0b0", boss: "#1e6a7a", skyline: "cave", particles: "bubbles", water: true },
+  meter: { label: "Glycine deficit", from: 0, to: 1500, unit: "mL", warnAbove: 1000 },
+  boss: { name: "The Glycine Leviathan", shape: "leviathan", hp: 6,
+    recall: ["k-y1","k-y2","k-y3","k-y4","k-y5","k-y6","k-y7","k-y8","k-m6","c8a","c8b","c8c"] },
+  segs: [
+    { t: "sign", title: "Grotto charts", text: "FIGO submucosal fibroids: type 0 is pedunculated in the cavity, type 1 is less than 50% intramural, and type 2 is 50% or more intramural. Types 0 and 1 up to about 3–4 cm suit hysteroscopic resection; type 2 may need two stages. Check FBC and ferritin, and sample the endometrium." },
+    { t: "gate", q: { k: "results", q: "Mrs B's results are back. What do they mean?", panel: [["Hb", "106, microcytic", "L"], ["Ferritin", "10", "L"], ["UEC", "Normal", ""], ["MSU", "No abnormality", ""], ["Pipelle", "Atrophic endometrium", ""]], opts: ["Iron-deficiency anaemia; no hyperplasia; bleeding likely from the fibroid", "Endometrial cancer", "Anaemia of chronic disease", "All normal"], a: 0, why: "Ferritin under 30 confirms iron deficiency. An atrophic pipelle is reassuring, though a pipelle can miss a focal lesion, and hysteroscopy will see the cavity." } },
+    { t: "gate", q: { k: "mcq", q: "Which fibroid is best suited to hysteroscopic resection?", opts: ["FIGO type 0", "FIGO type 5", "FIGO type 7", "FIGO type 4"], a: 0, why: "Types 0–2 are submucosal. Type 4 is intramural, and types 5–7 are subserosal (7 is pedunculated subserosal), so they need a laparoscopic or open approach." } },
+    { t: "pick", title: "The Fibroid Armoury", prompt: "Collect suitable options for a submucosal fibroid.", good: [["Resection", "Hysteroscopic resection"], ["TXA + NSAID", "Tranexamic acid with an NSAID"], ["GnRHa", "GnRH analogue (short-term or before surgery)"], ["UAE", "Uterine artery embolisation"], ["Hysterectomy", "Hysterectomy"]], bad: [["Ulipristal", "Ulipristal acetate", "Restricted because of rare serious liver injury."], ["Lap myomectomy", "Laparoscopic myomectomy", "That's the wrong route for an intracavitary fibroid."]], why: "Treat the iron deficiency too. NICE's heavy menstrual bleeding guideline has a helpful table of pros and cons." },
+    { t: "check" },
+    { t: "sign", title: "The rising water", text: "Monopolar resection needs non-conductive glycine or sorbitol. The deficit limit is 1000 mL (750 mL if elderly or comorbid). Bipolar resection can use saline, with a limit of 2500 mL (1500 mL if elderly or comorbid). Glycine overload causes dilutional hyponatraemia, cerebral oedema, and visual disturbance (glycine acts as a retinal neurotransmitter)." },
+    { t: "gate", q: { k: "mcq", q: "The glycine deficit is 1500 mL. What do you do?", opts: ["Stop the procedure and tell the anaesthetist", "Carry on, you're nearly done", "Switch to saline and carry on", "Give furosemide and carry on"], a: 0, why: "You're past the 1000 mL limit. Stop, check sodium, and assess for neurological symptoms and fluid overload." } },
+    { t: "order", title: "Draining the Grotto", prompt: "Touch the steps of the fluid emergency in order.", steps: [["Stop", "Stop the procedure"], ["Anaesthetist", "Tell the anaesthetist"], ["Sodium", "Check serum sodium"], ["Assess", "Assess neuro status and fluid overload"], ["3% saline", "Hypertonic saline if symptomatic"], ["ICU", "ICU and serial sodium"]], why: "Asymptomatic patients are managed conservatively. Give 3% saline 100 mL boluses if symptomatic, and correct no faster than 8–10 mmol/L in 24 h." },
+    { t: "gate", q: { k: "results", q: "In recovery she is drowsy, nauseated, with blurred vision. What now?", panel: [["Sodium", "124 mmol/L", "L"], ["GCS", "13", "L"], ["Fluid deficit", "1500 mL glycine", "H"]], opts: ["3% saline 100 mL bolus, repeat up to 3 times, ICU, frequent sodium checks", "2 L of 0.9% saline fast", "Fluid restriction only", "Furosemide alone"], a: 0, why: "Symptomatic acute hyponatraemia needs hypertonic saline titrated to symptoms. Add a loop diuretic only if she's also fluid overloaded. Avoid overcorrection." } },
+    { t: "check" },
+    { t: "sign", title: "The naturopath's creams", text: "Compounded bioidentical hormones aren't recommended: the doses are unregulated and there's no evidence of endometrial protection. Regulated body-identical MHT exists (transdermal oestradiol plus micronised progesterone). Women with a uterus need a progestogen. Benefits outweigh risks in women under 60 or within 10 years of menopause. Use vaginal oestrogen for dryness.", note: { said: "MHT up to 5 years and under 60", now: "favourable under 60 or within 10 years of menopause; review yearly with no arbitrary stop date" } },
+    { t: "gate", q: { k: "mcq", q: "She asks if her naturopath's compounded creams can help. What do you say?", opts: ["Not recommended: unregulated doses and no proof of endometrial protection; offer regulated MHT", "Yes, they're safer than HRT", "Yes, if made by a pharmacist", "Only if used vaginally"], a: 0, why: "Offer evidence-based options: body-identical oestradiol with micronised progesterone, or an LNG-IUS for endometrial protection." } },
+    { t: "gate", q: { k: "multi", q: "Which are contraindications to systemic MHT? Pick all that apply.", opts: ["Current or past breast cancer", "Undiagnosed vaginal bleeding", "Active VTE", "Active liver disease", "Mother had endometrial cancer at 75", "Hot flushes at 51"], a: [0, 1, 2, 3], why: "A family history of endometrial cancer isn't a contraindication. Transdermal oestrogen carries less VTE risk than oral." } }
+  ]
+},
+{
+  id: "s9", name: "The Ember Sanctum", station: "Station 9 · Breast cancer, tamoxifen, BRCA",
+  topic: "Menopause after breast cancer, atypical hyperplasia, BRCA1",
+  brief: "Mrs D, 47, has hot flushes, insomnia and vaginal dryness. She had breast cancer at 38 (bilateral mastectomy) and is on tamoxifen. Her mother died of breast cancer at 42, and her sister was just diagnosed with ovarian cancer at 46. TVUS shows a thickened, suspicious endometrium.",
+  chunks: ["9a Door synthesis: tamoxifen, family history", "9b Non-hormonal menopause treatment", "9c Atypical hyperplasia", "9d BRCA1 counselling"],
+  theme: { sky: ["#2a0e06", "#8a3a12"], far: "#4a1a0a", near: "#5e2410", ground: "#2e1a12", top: "#ffb35c", plat: "#8a4a20", accent: "#fff0d8", enemy: "#ffb347", enemy2: "#ff6a00", boss: "#c2601a", skyline: "temple", particles: "embers" },
+  boss: { name: "The BRCA Oracle", shape: "oracle", hp: 6,
+    recall: ["k-h1","k-h2","k-h3","k-h4","k-h5","k-h6","k-h7","k-h8","c9a","c9b","c9c","c9d"] },
+  segs: [
+    { t: "sign", title: "The tamoxifen flame", text: "The usual tamoxifen dose is 20 mg daily. Tamoxifen acts as a partial oestrogen agonist on the endometrium, causing polyps, hyperplasia and a 2–3 times higher risk of endometrial cancer. Investigate bleeding or a suspicious endometrium with hysteroscopy and biopsy.", note: { said: "tamoxifen 50 mg daily", now: "20 mg daily" } },
+    { t: "gate", q: { k: "mcq", q: "What is the usual tamoxifen dose?", opts: ["20 mg daily", "50 mg daily", "5 mg daily", "200 mg daily"], a: 0, why: "20 mg daily for 5–10 years. Your notes said 50 mg, which isn't a standard dose." } },
+    { t: "gate", q: { k: "multi", q: "Which features suggest hereditary breast and ovarian cancer? Pick all that apply.", opts: ["Her own breast cancer at 38", "Mother's breast cancer at 42", "Sister's ovarian cancer at 46", "Father's MI at 45", "Ex-smoker"], a: [0, 1, 2], why: "Early-onset breast cancer with ovarian cancer in a close relative points to BRCA1/2. Refer to genetics." } },
+    { t: "check" },
+    { t: "sign", title: "Cooling the embers", text: "After breast cancer, avoid systemic MHT and tibolone. Non-hormonal options: venlafaxine or desvenlafaxine, gabapentin, clonidine, CBT, and fezolinetant (a newer NK3 antagonist). Avoid paroxetine and fluoxetine, which inhibit CYP2D6 and reduce tamoxifen's active metabolite. For dryness, use moisturisers and lubricants first, then low-dose vaginal oestrogen after discussion with her oncologist.", note: { said: "evening primrose oil", now: "no evidence of benefit; use the options above" } },
+    { t: "pick", title: "The Cooling Stones", prompt: "Collect the safe non-hormonal treatments for her hot flushes.", good: [["Venlafaxine", "Venlafaxine"], ["Desvenlafaxine", "Desvenlafaxine"], ["Gabapentin", "Gabapentin"], ["Clonidine", "Clonidine"], ["CBT", "Cognitive behavioural therapy"]], bad: [["Paroxetine", "Paroxetine", "A strong CYP2D6 inhibitor: it reduces tamoxifen's effect."], ["Tibolone", "Tibolone", "Increased breast cancer recurrence (LIBERATE trial)."], ["Systemic HRT", "Systemic oestrogen", "Contraindicated after breast cancer."], ["Primrose oil", "Evening primrose oil", "There's no evidence of benefit."]], why: "SNRIs and gabapentin have the best evidence. Fezolinetant is a newer option." },
+    { t: "gate", q: { k: "mcq", q: "Which hot-flush treatment should she avoid while on tamoxifen?", opts: ["Paroxetine", "Venlafaxine", "Gabapentin", "Clonidine"], a: 0, why: "Paroxetine and fluoxetine strongly inhibit CYP2D6, blocking conversion of tamoxifen to endoxifen." } },
+    { t: "check" },
+    { t: "sign", title: "The atypia", text: "Atypical hyperplasia (EIN) has up to about 40% risk of coexisting endometrial cancer. Treat with total hysterectomy plus BSO (BSO is doubly indicated here: postmenopausal age and BRCA risk), with gynae-oncology input. Don't do endometrial ablation. Fertility-sparing progestogen therapy is only for women who want a pregnancy." },
+    { t: "gate", q: { k: "results", q: "Hysteroscopy and D&C results. What's the plan?", panel: [["Hysteroscopy", "Lush endometrium", ""], ["Histology", "Complex atypical hyperplasia, no invasion", "H"], ["Genetics", "Testing in progress", ""]], opts: ["Total hysterectomy with BSO, gynae-oncology input", "LNG-IUS and repeat biopsy in 3 months", "Cyclical oral progestogen", "Endometrial ablation"], a: 0, why: "She doesn't want more children, and there's a real risk of hidden cancer. Hysterectomy with BSO treats both the hyperplasia and her likely BRCA risk." } },
+    { t: "check" },
+    { t: "sign", title: "The Oracle speaks", text: "BRCA1 gives a lifetime ovarian cancer risk of about 40–45%. Recommend risk-reducing salpingo-oophorectomy at 35–40 once childbearing is complete. Offer cascade testing to her sister and daughters. After breast cancer, systemic MHT and tibolone stay off the table." },
+    { t: "gate", q: { k: "mcq", q: "After surgery her flushes are worse. She asks about tibolone. What do you say?", opts: ["Not recommended: it increased breast cancer recurrence (LIBERATE)", "Yes, it's safe after breast cancer", "Yes, with tamoxifen", "Only for 1 year"], a: 0, why: "LIBERATE was stopped early for increased recurrence. Use non-hormonal options instead." } },
+    { t: "gate", q: { k: "mcq", q: "BRCA1 is confirmed. What matters most for her family?", opts: ["Cascade genetic testing for her relatives", "Nothing: it only affects her", "Mammograms for her daughters from 50", "CA-125 screening for all relatives"], a: 0, why: "First-degree relatives have a 50% chance of carrying it. Carriers get enhanced breast screening from 25–30 and RRSO at 35–40. CA-125 screening doesn't reduce ovarian cancer deaths." } }
+  ]
+}
+];
+
+/* Custom recall questions for bosses (stations your Recall Drill doesn't cover). */
+const CUSTOM_RECALL = [
+  { id: "c3a", type: "fact", q: "Give two reasons the COCP is contraindicated for Sharon.", a: "Previous DVT, and she is a smoker over 35." },
+  { id: "c3b", type: "why", q: "Why conserve the ovaries at hysterectomy under 65?", a: "Removing them raises all-cause mortality, cardiovascular disease, osteoporosis, dementia and depression; salpingectomy alone lowers ovarian cancer risk." },
+  { id: "c3c", type: "why", q: "Why does endometrial ablation often fail in adenomyosis?", a: "The disease lies deep in the myometrium beyond the ablation depth, and the enlarged cavity raises failure rates." },
+  { id: "c4a", type: "fact", q: "First-line medical treatments for endometriosis pain?", a: "NSAIDs, the COCP (continuous is fine) and progestogens (dienogest, norethisterone, LNG-IUS)." },
+  { id: "c4b", type: "why", q: "Why give add-back therapy with a GnRH agonist?", a: "The hypo-oestrogenic state causes bone loss and vasomotor symptoms; add-back from the start prevents them without reducing efficacy." },
+  { id: "c4c", type: "fact", q: "Imaging for suspected deep endometriosis?", a: "Expert transvaginal ultrasound or MRI." },
+  { id: "c4d", type: "fact", q: "How do you confirm a structure is the ureter at laparoscopy?", a: "Peristalsis (vermiculation), tracing it from the pelvic brim, and its course under the uterine artery." },
+  { id: "c4e", type: "fact", q: "How do you lower the recurrence of endometriosis after excision?", a: "Postoperative long-term hormonal suppression (COCP, progestogen or LNG-IUS)." },
+  { id: "c5a", type: "num", q: "Therapeutic enoxaparin dose for PE?", a: "1 mg/kg twice daily or 1.5 mg/kg once daily." },
+  { id: "c5b", type: "num", q: "How long do you anticoagulate a provoked VTE after surgery?", a: "3 months." },
+  { id: "c5c", type: "why", q: "Why stop warfarin before conception?", a: "Warfarin embryopathy at 6–12 weeks; switch to LMWH before conceiving." },
+  { id: "c5d", type: "fact", q: "Where is Palmer's point, and when do you use it?", a: "Left upper quadrant, about 3 cm below the costal margin in the midclavicular line; used when periumbilical adhesions are likely (previous midline laparotomy)." },
+  { id: "c5e", type: "fact", q: "Pregnancy thromboprophylaxis for heterozygous factor V Leiden with a previous VTE?", a: "Antenatal LMWH and 6 weeks postnatal LMWH, planned with haematology." },
+  { id: "c6a", type: "fact", q: "What does DRSABCD stand for?", a: "Danger, Response, Send for help, Airway, Breathing, Circulation, Defibrillation." },
+  { id: "c6b", type: "why", q: "What causes cervical shock?", a: "A vagal reflex from cervical stretch or dilatation, causing bradycardia, hypotension and syncope." },
+  { id: "c6c", type: "num", q: "Atropine dose for symptomatic bradycardia?", a: "500–600 micrograms IV, repeated to a maximum of 3 mg." },
+  { id: "c6d", type: "num", q: "IM adrenaline dose for adult anaphylaxis?", a: "0.5 mg (0.5 mL of 1:1000) IM into the anterolateral thigh, repeated every 5 minutes as needed." },
+  { id: "c6e", type: "fact", q: "Name three ways to reduce pain and vasovagal risk at IUD insertion.", a: "Any three of: pre-procedure NSAID, cervical or paracervical block, lidocaine gel, experienced operator, lying her down, talking her through it." },
+  { id: "c6f", type: "fact", q: "Give two clinical differences between a vasovagal episode and anaphylaxis.", a: "Vasovagal: bradycardia, pallor, recovery when lying flat. Anaphylaxis: tachycardia, urticaria or flushing, wheeze or angioedema." },
+  { id: "c7a", type: "why", q: "Why time elective surgery for an adnexal mass after 14 weeks?", a: "The placenta has taken over from the corpus luteum, the miscarriage risk is lower, and the uterus is still small enough for access." },
+  { id: "c7b", type: "fact", q: "If the corpus luteum is removed before 10 weeks, what do you give?", a: "Progesterone support until about 10–12 weeks." },
+  { id: "c7c", type: "fact", q: "Differentials for acute right-sided pain at 14 weeks with a known adnexal mass?", a: "Ovarian torsion, cyst rupture or haemorrhage, appendicitis (also red degeneration of a fibroid)." },
+  { id: "c7d", type: "why", q: "Does normal Doppler flow exclude ovarian torsion?", a: "No: flow can persist in partial or intermittent torsion. It's a clinical diagnosis, so operate if suspected." },
+  { id: "c7e", type: "fact", q: "Management options for a second-trimester fetal death?", a: "Expectant, medical induction (mifepristone 200 mg then misoprostol), or surgical D&E by an experienced operator." },
+  { id: "c7f", type: "fact", q: "Investigations after a second-trimester loss?", a: "Kleihauer, infection screen (TORCH, parvovirus, syphilis), antiphospholipid antibodies, TFT and HbA1c, and with consent postmortem, placental histology and karyotype." },
+  { id: "c7g", type: "fact", q: "Pregnancy care changes for a BMI of 38?", a: "5 mg folate, early GDM screen, VTE risk assessment, anaesthetic review, serial growth scans, aspirin if other pre-eclampsia risk factors." },
+  { id: "c8a", type: "num", q: "When is the benefit-risk balance of MHT most favourable?", a: "Under 60 or within 10 years of menopause." },
+  { id: "c8b", type: "why", q: "Why does a woman with a uterus need a progestogen with oestrogen?", a: "Unopposed oestrogen causes endometrial hyperplasia and cancer." },
+  { id: "c8c", type: "fact", q: "Treatment for genitourinary syndrome of menopause?", a: "Low-dose vaginal oestrogen (for example estriol), plus moisturisers and lubricants." },
+  { id: "c9a", type: "num", q: "Lifetime ovarian cancer risk with BRCA1, and recommended RRSO age?", a: "About 40–45%; RRSO at 35–40 once childbearing is complete." },
+  { id: "c9b", type: "why", q: "Why avoid paroxetine and fluoxetine with tamoxifen?", a: "They inhibit CYP2D6, reducing conversion of tamoxifen to endoxifen, its active metabolite." },
+  { id: "c9c", type: "why", q: "What does tamoxifen do to the endometrium?", a: "As a partial oestrogen agonist it causes polyps, hyperplasia and a 2–3 times risk of endometrial cancer." },
+  { id: "c9d", type: "fact", q: "Treatment for atypical hyperplasia in a woman not wanting fertility?", a: "Total hysterectomy with bilateral salpingo-oophorectomy (no ablation), with gynae-oncology input." }
+];
+
+const DRILL = [{"id":"k-pc1","topic":"pcos","type":"fact","q":"How many Rotterdam criteria make the diagnosis of PCOS?","a":"2 of 3 (oligo/anovulation, hyperandrogenism, polycystic ovaries), once other causes are excluded."},{"id":"k-pc2","topic":"pcos","type":"num","q":"Ultrasound threshold for polycystic ovarian morphology on TVUS?","a":"≥ 20 follicles per ovary and/or ovarian volume ≥ 10 mL."},{"id":"k-pc3","topic":"pcos","type":"num","q":"mFG score that defines hirsutism in the 2023 PCOS guideline?","a":"4–6 or more."},{"id":"k-pc4","topic":"pcos","type":"why","q":"Why is SHBG low in PCOS?","a":"Hyperinsulinaemia suppresses hepatic SHBG production, raising free testosterone."},{"id":"k-pc5","topic":"pcos","type":"fact","q":"Which blood test screens for non-classic CAH?","a":"Early-morning, follicular-phase 17-hydroxyprogesterone (confirm with an ACTH stimulation test)."},{"id":"k-pc6","topic":"pcos","type":"fact","q":"Which blood test can replace ultrasound for the ovarian criterion in adults?","a":"Serum AMH."},{"id":"k-pc7","topic":"pcos","type":"why","q":"Why isn't ultrasound used to diagnose PCOS within 8 years of menarche?","a":"Multifollicular ovaries are normal at that age."},{"id":"k-pc8","topic":"pcos","type":"why","q":"How does spironolactone reduce hirsutism, and why does it need contraception?","a":"It blocks androgen receptors (and reduces androgen synthesis); it can feminise a male fetus."},{"id":"k-pc9","topic":"pcos","type":"fact","q":"Which antiandrogen carries a dose-dependent meningioma risk?","a":"Cyproterone acetate."},{"id":"k-pc10","topic":"pcos","type":"num","q":"Minimum trial of hormonal treatment before judging hirsutism response?","a":"6 months."},{"id":"k-pc11","topic":"pcos","type":"why","q":"Main mechanism of metformin in PCOS?","a":"Reduces hepatic gluconeogenesis and improves insulin sensitivity, lowering insulin and androgens."},{"id":"k-pc12","topic":"pcos","type":"num","q":"How long must the COCP be stopped before androgen testing?","a":"At least 3 months."},{"id":"k-f1","topic":"fert","type":"num","q":"Definition of infertility by time?","a":"No pregnancy after 12 months of regular unprotected sex; 6 months if she is ≥ 35."},{"id":"k-f2","topic":"fert","type":"why","q":"How does letrozole induce ovulation?","a":"Aromatase inhibition lowers oestrogen, reducing negative feedback so FSH rises."},{"id":"k-f3","topic":"fert","type":"why","q":"How does clomiphene induce ovulation, and what is its main downside?","a":"It blocks hypothalamic oestrogen receptors so FSH rises; its anti-oestrogenic effect thins the endometrium and thickens cervical mucus."},{"id":"k-f4","topic":"fert","type":"trial","q":"PPCOS II: live birth rates with letrozole vs clomiphene?","a":"27.5% vs 19.1% (Legro, NEJM 2014)."},{"id":"k-f5","topic":"fert","type":"num","q":"Letrozole starting dose and cycle days?","a":"2.5 mg daily on days 3–7, increasing to a maximum of 7.5 mg."},{"id":"k-f6","topic":"fert","type":"num","q":"Definition of clomiphene resistance?","a":"No ovulation at 150 mg daily."},{"id":"k-f7","topic":"fert","type":"num","q":"Mid-luteal progesterone level that confirms ovulation?","a":"Above about 30 nmol/L, about 7 days before the expected period."},{"id":"k-f8","topic":"fert","type":"num","q":"WHO 2021 lower limits for semen volume and sperm concentration?","a":"1.4 mL and 16 million/mL."},{"id":"k-f9","topic":"fert","type":"num","q":"WHO 2021 lower limits for progressive motility and normal morphology?","a":"30% progressive motility; 4% normal forms."},{"id":"k-f10","topic":"fert","type":"fact","q":"What does AMH reflect, and what does it not predict?","a":"Ovarian reserve (the antral follicle pool); it doesn't predict natural fertility."},{"id":"k-f11","topic":"fert","type":"fact","q":"Which gonadotrophin protocol is used for ovulation induction in PCOS?","a":"Low-dose step-up FSH with ultrasound monitoring, cancelling if too many follicles grow."},{"id":"k-f12","topic":"fert","type":"fact","q":"Advantage and drawbacks of laparoscopic ovarian drilling?","a":"No multiple-pregnancy or OHSS risk; drawbacks are surgery, adhesions and reduced ovarian reserve."},{"id":"k-h1","topic":"hyper","type":"fact","q":"WHO classification of endometrial hyperplasia?","a":"Hyperplasia without atypia, and atypical hyperplasia (EIN)."},{"id":"k-h2","topic":"hyper","type":"num","q":"Risk of hyperplasia without atypia progressing to cancer?","a":"Under 5% over 20 years."},{"id":"k-h3","topic":"hyper","type":"fact","q":"First-line treatment for hyperplasia without atypia, and minimum duration?","a":"LNG-IUS for at least 6 months."},{"id":"k-h4","topic":"hyper","type":"num","q":"Surveillance and discharge criteria for hyperplasia without atypia?","a":"Biopsy at least every 6 months; discharge after 2 consecutive negative biopsies."},{"id":"k-h5","topic":"hyper","type":"num","q":"Concurrent endometrial cancer rate with atypical hyperplasia?","a":"Up to about 40% (about 43% in GOG 167)."},{"id":"k-h6","topic":"hyper","type":"num","q":"Biopsy interval for fertility-sparing treatment of atypical hyperplasia?","a":"Every 3 months until 2 consecutive negative biopsies."},{"id":"k-h7","topic":"hyper","type":"fact","q":"If she declines an LNG-IUS for hyperplasia without atypia, what do you use?","a":"Continuous oral progestogen (MPA 10–20 mg or norethisterone 10–15 mg daily), not cyclical."},{"id":"k-h8","topic":"hyper","type":"fact","q":"Who needs annual biopsies after discharge from hyperplasia surveillance?","a":"Those at higher relapse risk: BMI ≥ 35 or treated with oral progestogens."},{"id":"k-p1","topic":"precon","type":"num","q":"Standard and high-dose folic acid, and who needs the high dose?","a":"0.5 mg daily; 5 mg if BMI ≥ 30, diabetes, previous NTD or on antiepileptics."},{"id":"k-p2","topic":"precon","type":"num","q":"Iodine supplement dose before and during pregnancy?","a":"150 µg daily."},{"id":"k-p3","topic":"precon","type":"num","q":"After MMR or varicella vaccine, how long to avoid pregnancy?","a":"28 days."},{"id":"k-p4","topic":"precon","type":"num","q":"Aspirin for pre-eclampsia prevention: dose and timing?","a":"150 mg at night, started before 16 weeks and continued to 36 weeks."},{"id":"k-p5","topic":"precon","type":"fact","q":"Which smoking-cessation drugs should be avoided in pregnancy?","a":"Varenicline and bupropion; NRT is acceptable."},{"id":"k-p6","topic":"precon","type":"fact","q":"Which conditions are covered by preconception carrier screening in Australia?","a":"Cystic fibrosis, spinal muscular atrophy and fragile X."},{"id":"k-p7","topic":"precon","type":"fact","q":"Which antiepileptic should be avoided in women who may become pregnant?","a":"Sodium valproate."},{"id":"k-o1","topic":"ohss","type":"why","q":"Key mediator of the capillary leak in OHSS?","a":"VEGF from hCG-stimulated granulosa-lutein cells."},{"id":"k-o2","topic":"ohss","type":"num","q":"Early vs late OHSS: timing and driver?","a":"Early within about 7 days of the trigger (the trigger's hCG); late ≥ 10 days (pregnancy hCG)."},{"id":"k-o3","topic":"ohss","type":"num","q":"Haematocrit thresholds for severe and critical OHSS?","a":"Severe > 0.45; critical > 0.55."},{"id":"k-o4","topic":"ohss","type":"num","q":"Biochemical markers of severe OHSS besides haematocrit?","a":"Na < 135, K > 5, albumin < 35 g/L."},{"id":"k-o5","topic":"ohss","type":"why","q":"Why avoid NSAIDs in OHSS?","a":"Risk of renal impairment in a hypovolaemic patient."},{"id":"k-o6","topic":"ohss","type":"why","q":"Why avoid diuretics in OHSS?","a":"They worsen intravascular depletion and haemoconcentration, raising thrombosis and renal risk."},{"id":"k-o7","topic":"ohss","type":"fact","q":"Single most effective OHSS prevention in an IVF cycle?","a":"A GnRH agonist trigger in an antagonist cycle, with freeze-all."},{"id":"k-o8","topic":"ohss","type":"why","q":"How does cabergoline reduce OHSS risk?","a":"As a dopamine agonist it blocks VEGF receptor-2 signalling, reducing vascular permeability."},{"id":"k-o9","topic":"ohss","type":"num","q":"OHSS thromboprophylaxis: dose and duration if pregnant?","a":"Enoxaparin 40 mg daily, continued to the end of the first trimester."},{"id":"k-o10","topic":"ohss","type":"fact","q":"Name three risk factors for OHSS.","a":"Any three of: PCOS or high AMH, young age, many follicles or high oestradiol, previous OHSS, hCG trigger, pregnancy."},{"id":"k-m1","topic":"hmb","type":"num","q":"Objective definition of heavy menstrual bleeding?","a":"Loss of more than 80 mL per cycle."},{"id":"k-m2","topic":"hmb","type":"fact","q":"What does PALM-COEIN stand for?","a":"Polyp, Adenomyosis, Leiomyoma, Malignancy/hyperplasia; Coagulopathy, Ovulatory, Endometrial, Iatrogenic, Not yet classified."},{"id":"k-m3","topic":"hmb","type":"why","q":"Mechanism of tranexamic acid?","a":"Antifibrinolytic: blocks the lysine-binding sites on plasminogen."},{"id":"k-m4","topic":"hmb","type":"why","q":"How does mefenamic acid reduce menstrual loss?","a":"COX inhibition lowers endometrial prostaglandins (it also eases dysmenorrhoea)."},{"id":"k-m5","topic":"hmb","type":"why","q":"How does a GnRH agonist shrink fibroids?","a":"After an initial flare, pituitary desensitisation produces a hypo-oestrogenic state."},{"id":"k-m6","topic":"hmb","type":"fact","q":"FIGO fibroid types 0, 1 and 2?","a":"0 pedunculated intracavitary; 1 submucosal < 50% intramural; 2 submucosal ≥ 50% intramural."},{"id":"k-m7","topic":"hmb","type":"fact","q":"Which fibroid degeneration causes pain in pregnancy, and how is it managed?","a":"Red (carneous) degeneration, usually 2nd trimester; analgesia and supportive care."},{"id":"k-m8","topic":"hmb","type":"trial","q":"What did the FEMME trial show?","a":"Myomectomy gave better quality of life at 2 years than uterine artery embolisation."},{"id":"k-m9","topic":"hmb","type":"fact","q":"What is post-embolisation syndrome?","a":"Pain, fever, nausea and a raised WCC after UAE, without infection."},{"id":"k-m10","topic":"hmb","type":"fact","q":"Which features raise suspicion of leiomyosarcoma?","a":"Rapid growth, especially after menopause, and an irregular, heterogeneous mass on MRI."},{"id":"k-m11","topic":"hmb","type":"num","q":"Ferritin level indicating iron deficiency?","a":"Below 30 µg/L."},{"id":"k-y1","topic":"hyst","type":"num","q":"Fluid deficit limits for hypotonic media such as glycine?","a":"1,000 mL; 750 mL if elderly or comorbid."},{"id":"k-y2","topic":"hyst","type":"num","q":"Fluid deficit limits for isotonic saline?","a":"2,500 mL; 1,500 mL if elderly or comorbid."},{"id":"k-y3","topic":"hyst","type":"why","q":"Why does monopolar resection need glycine or sorbitol rather than saline?","a":"Saline conducts electricity and disperses the current; bipolar instruments can use saline."},{"id":"k-y4","topic":"hyst","type":"why","q":"Why does glycine overload cause visual disturbance and confusion?","a":"Glycine is an inhibitory retinal neurotransmitter; hyponatraemia and ammonia from its metabolism cause encephalopathy."},{"id":"k-y5","topic":"hyst","type":"num","q":"Maximum rate of sodium correction in hyponatraemia?","a":"8–10 mmol/L in 24 hours."},{"id":"k-y6","topic":"hyst","type":"fact","q":"Perforation at hysteroscopy: when do you need a laparoscopy?","a":"If energy or suction was used, or it is lateral or bleeding; a blunt fundal perforation can be observed."},{"id":"k-y7","topic":"hyst","type":"fact","q":"Commonest cause of Asherman's syndrome?","a":"Curettage of a recently pregnant uterus (postpartum or after miscarriage)."},{"id":"k-y8","topic":"hyst","type":"fact","q":"Gold-standard test for Asherman's syndrome?","a":"Hysteroscopy."},{"id":"k-my1","topic":"myo","type":"why","q":"How does vasopressin reduce bleeding at myomectomy, and what is its main danger?","a":"V1-mediated vasoconstriction; intravascular injection causes bradycardia, hypertension or cardiac arrest."},{"id":"k-my2","topic":"myo","type":"num","q":"Pre-op misoprostol for myomectomy: dose and timing?","a":"400 µg vaginally (or rectally) about 1 hour before surgery."},{"id":"k-my3","topic":"myo","type":"num","q":"Risk of uterine rupture in pregnancy after myomectomy?","a":"About 0.5–1%."},{"id":"k-my4","topic":"myo","type":"num","q":"Risk of conversion to hysterectomy at myomectomy?","a":"About 1%."},{"id":"k-my5","topic":"myo","type":"num","q":"Where does the ureter pass relative to the cervix and uterine artery?","a":"About 1.5–2 cm lateral to the cervix, under the uterine artery."},{"id":"k-my6","topic":"myo","type":"why","q":"Downside of a pre-op GnRH agonist before myomectomy?","a":"It blurs the cleavage plane and can hide small fibroids, raising recurrence."},{"id":"k-my7","topic":"myo","type":"num","q":"How long to wait before conceiving after myomectomy?","a":"About 3–6 months."},{"id":"k-my8","topic":"myo","type":"why","q":"Why avoid posterior uterine incisions at myomectomy?","a":"They cause more adhesions to bowel, tubes and ovaries."},{"id":"k-po1","topic":"postop","type":"num","q":"Daily maintenance fluid and electrolytes (NICE)?","a":"Water 25–30 mL/kg; Na, K and Cl about 1 mmol/kg each; glucose 50–100 g."},{"id":"k-po2","topic":"postop","type":"fact","q":"AXR finding that favours ileus over obstruction?","a":"Gas throughout small and large bowel with no transition point."},{"id":"k-po3","topic":"postop","type":"fact","q":"When does an unrecognised thermal bowel injury usually present?","a":"Several days later (often day 3–7), with peritonitis or sepsis."},{"id":"k-po4","topic":"postop","type":"fact","q":"What is the lethal triad of haemorrhage?","a":"Hypothermia, acidosis and coagulopathy."},{"id":"k-po5","topic":"postop","type":"num","q":"ATLS class III haemorrhage: blood loss and heart rate?","a":"30–40% of blood volume; HR 120–140 with falling BP."},{"id":"k-po6","topic":"postop","type":"fact","q":"Classic warning sign of wound dehiscence?","a":"Serosanguinous discharge, usually around days 5–8."},{"id":"k-po7","topic":"postop","type":"fact","q":"Which electrolyte disturbance commonly prolongs ileus?","a":"Hypokalaemia (also hypomagnesaemia and hyponatraemia)."},{"id":"k-u1","topic":"ureter","type":"fact","q":"Three common sites of ureteric injury at hysterectomy?","a":"Pelvic brim (infundibulopelvic ligament), under the uterine artery, and the vaginal angle."},{"id":"k-u2","topic":"ureter","type":"fact","q":"How do you confirm a suspected bladder injury during surgery?","a":"Retrograde fill with dye such as methylene blue, ± cystoscopy."},{"id":"k-u3","topic":"ureter","type":"num","q":"Catheter duration after primary repair of a bladder dome injury?","a":"About 7–14 days, often with a cystogram before removal."},{"id":"k-u4","topic":"ureter","type":"fact","q":"How do you confirm leaking fluid is urine?","a":"Its creatinine is far higher than serum creatinine."},{"id":"k-u5","topic":"ureter","type":"fact","q":"Best imaging for a suspected ureteric injury?","a":"CT urogram with a delayed excretory phase."},{"id":"k-u6","topic":"ureter","type":"fact","q":"Repair for a distal (lower-third) ureteric injury?","a":"Ureteroneocystostomy ± psoas hitch or Boari flap."},{"id":"k-u7","topic":"ureter","type":"num","q":"When and how does a vesicovaginal fistula after hysterectomy present?","a":"About 1–3 weeks later, with continuous vaginal leakage of urine."},{"id":"k-u8","topic":"ureter","type":"fact","q":"Bedside test for a vesicovaginal fistula?","a":"Three-swab (tampon) test with dye instilled into the bladder."}];
+</script>
+<script>
+"use strict";
+/* ================= basics ================= */
+const TILE = 32, ROWS = 12, GR = 9, DAY = 864e5, LADDER = [1, 3, 7, 28, 60], MAXH = 5;
+const $ = id => document.getElementById(id);
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null && k !== false) n.append(k);
+  return n;
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function h2(x, y) { let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const LEVEL_BY_ID = Object.fromEntries(LEVELS.map(L => [L.id, L]));
+
+/* ================= question bank ================= */
+const QB = {};
+for (const d of DRILL) QB[d.id] = { kind: "recall", id: d.id, q: d.q, a: d.a, type: d.type, src: "Recall Drill" };
+for (const c of CUSTOM_RECALL) QB[c.id] = { kind: "recall", id: c.id, q: c.q, a: c.a, type: c.type, src: "Station notes" };
+for (const L of LEVELS) L.segs.forEach((s, i) => { if (s.t === "gate") { s.id = L.id + "-g" + i; QB[s.id] = { kind: "gate", id: s.id, level: L.id, ...s.q }; } });
+function answerText(item) {
+  if (item.kind === "recall") return item.a;
+  if (item.k === "multi") return item.a.map(i => item.opts[i]).join("; ");
+  return item.opts[item.a];
+}
+
+/* ================= progress store (per-viewer db doc, browser fallback) ================= */
+const P = { stars: {}, clears: {}, srs: {}, updated: 0 };
+const LS_KEY = "gynae-realms-v1";
+let docRef = null, storeMode = "none", writeChain = Promise.resolve(), saveTimer = 0;
+function lsRead() { try { return JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) { return null; } }
+function lsWrite(v) { try { localStorage.setItem(LS_KEY, JSON.stringify(v)); } catch (e) {} }
+function mergeInto(src) {
+  if (!src) return;
+  for (const [k, v] of Object.entries(src.stars || {})) P.stars[k] = Math.max(P.stars[k] || 0, v);
+  for (const [k, v] of Object.entries(src.clears || {})) P.clears[k] = Math.max(P.clears[k] || 0, v);
+  for (const [k, v] of Object.entries(src.srs || {})) if (!P.srs[k] || (v.at || 0) > (P.srs[k].at || 0)) P.srs[k] = v;
+}
+function save() {
+  P.updated = Date.now();
+  const body = { stars: P.stars, clears: P.clears, srs: P.srs, updated: P.updated };
+  lsWrite(body);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (!docRef) return;
+    writeChain = writeChain.then(() => docRef.set(body)).catch(() => { docRef = null; storeMode = "local"; renderStoreNote(); });
+  }, 600);
+}
+const CAP = {};
+async function initCaps() {
+  mergeInto(lsRead()); if (lsRead()) storeMode = "local";
+  const C = window.claude;
+  if (!C || !C.use) { renderStoreNote(); renderMap(); return; }
+  C.use("sample").then(s => { CAP.sample = s; }).catch(() => { CAP.sample = null; });
+  C.use("dictation").then(d => { CAP.dict = d; if (d) wireDictation(d); }).catch(() => { CAP.dict = null; });
+  try {
+    const [db, user] = await Promise.all([C.use("db"), C.use("user")]);
+    const uid = user ? await user.id() : null;
+    if (db && uid) {
+      docRef = db.doc("data/users/" + uid + "/gynae-realms");
+      const snap = await docRef.get();
+      if (snap.exists) mergeInto(snap.data());
+      storeMode = "cloud";
+      save();
+    }
+  } catch (e) {}
+  renderStoreNote(); renderMap();
+}
+function renderStoreNote() {
+  $("storeNote").textContent = storeMode === "cloud" ? "Your stars and review schedule are saved privately to your account, so they follow you to your phone."
+    : storeMode === "local" ? "Your progress is saved in this browser only." : "Progress won't be kept after you close this page.";
+}
+
+/* spaced review */
+function srsMiss(id) { const s = P.srs[id] || { box: 0, misses: 0 }; s.box = 0; s.misses = (s.misses || 0) + 1; s.due = Date.now() + DAY; s.at = Date.now(); P.srs[id] = s; save(); }
+function srsHit(id) { const s = P.srs[id]; if (!s) return; s.box = Math.min((s.box || 0) + 1, LADDER.length - 1); s.due = Date.now() + LADDER[s.box] * DAY; s.at = Date.now(); save(); }
+function dueIds() { const now = Date.now(); return Object.entries(P.srs).filter(([id, s]) => QB[id] && s.due <= now).sort((a, b) => a[1].due - b[1].due).map(([id]) => id); }
+
+/* ================= map screen ================= */
+function starStr(n) { const s = el("span", { class: "stars", "aria-label": n + " of 3 stars" }); for (let i = 0; i < 3; i++) s.append(i < n ? el("b", { text: "★" }) : "☆"); return s; }
+function renderMap() {
+  const box = $("realms"); box.textContent = "";
+  LEVELS.forEach((L, i) => {
+    const notes = L.segs.filter(s => s.note || (s.q && s.q.note)).length;
+    const art = el("canvas", { width: "500", height: "148" });
+    const card = el("button", { type: "button", class: "realm", onclick: () => openBriefing(L) },
+      el("div", { class: "art" }, art, el("span", { class: "num", text: "Realm " + (i + 1) })),
+      el("div", { class: "body" },
+        el("span", { class: "name", text: L.name }),
+        el("span", { class: "station", text: L.station }),
+        el("div", { class: "foot" }, starStr(P.stars[L.id] || 0), notes ? el("span", { class: "notes", text: notes + " update" + (notes > 1 ? "s" : "") + " to your notes" }) : null)));
+    box.append(card);
+    paintBanner(art, L);
+  });
+  const due = dueIds().length, total = Object.keys(P.srs).length;
+  $("shrineText").textContent = total === 0 ? "Questions you miss come back here on a 1, 3, 7 and 28-day ladder. Nothing waiting yet."
+    : due ? due + " question" + (due > 1 ? "s" : "") + " due now, of " + total + " on your ladder." : "Nothing due right now. " + total + " question" + (total > 1 ? "s" : "") + " on your ladder.";
+  $("shrineBtn").disabled = due === 0;
+}
+function paintBanner(cv, L) {
+  const c = cv.getContext("2d"), W = cv.width, H = cv.height, t = L.theme;
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, t.sky[0]); g.addColorStop(1, t.sky[1]); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  drawSkyline(c, t, 0, W, H * 0.72, 0.6, t.far, 1.4);
+  drawSkyline(c, t, 300, W, H * 0.86, 0.5, t.near, 1.1);
+  c.fillStyle = t.ground; c.fillRect(0, H * 0.86, W, H); c.fillStyle = t.top; c.fillRect(0, H * 0.86, W, 5);
+}
+
+/* ================= briefing / codex ================= */
+function openBriefing(L) {
+  const notes = [];
+  L.segs.forEach(s => { const n = s.note || (s.q && s.q.note); if (n) notes.push(n); });
+  showModal(p => {
+    p.append(
+      el("span", { class: "kicker", text: L.station }),
+      el("h2", { text: L.name }),
+      el("p", { class: "lore", text: L.brief }),
+      el("h3", { text: "What you'll cover" }),
+      el("div", { class: "chunks" }, ...L.chunks.map(c => el("span", { text: c }))),
+      notes.length ? el("div", { class: "note" }, el("b", { text: "Updated from your notes: " }), notes.map(n => n.now.split(";")[0]).join(" · ")) : null,
+      el("p", { class: "muted", text: "Guardian: " + L.boss.name + ". Move with the arrow keys or A and D, jump with Space, W or the up arrow, and press E to reread a sign. On a phone, use the buttons under the game, and turn it sideways for a wider view." }),
+      el("div", { class: "actions" },
+        el("button", { type: "button", class: "btn primary", text: "Enter the realm", onclick: () => { closeModal(); startLevel(L); } }),
+        el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(L, () => openBriefing(L)) }),
+        el("button", { type: "button", class: "btn quiet", text: "Back", onclick: closeModal })));
+  });
+}
+function openCodex(L, back) {
+  showModal(p => {
+    const list = el("div", { class: "codex" });
+    for (const s of L.segs) {
+      if (s.t === "sign") list.append(el("article", {}, el("h3", { text: s.title }), el("p", { text: s.text }), noteEl(s.note)));
+      if (s.t === "order") list.append(el("article", {}, el("h3", { text: s.title }), el("ol", { class: "steps" }, ...s.steps.map(x => el("li", { text: x[1] }))), el("p", { class: "muted", text: s.why })));
+    }
+    p.append(el("span", { class: "kicker", text: "Scrolls · " + L.station }), el("h2", { text: L.name }), list,
+      el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => back ? back() : closeModal() })));
+  });
+}
+function noteEl(n) { return n ? el("div", { class: "note" }, el("b", { text: "Your notes said: " }), n.said + ". ", el("b", { text: "Current guidance: " }), n.now + ".") : null; }
+
+/* ================= modal ================= */
+let modalOpen = false, modalKeys = null;
+function showModal(build) {
+  const p = $("panel"); p.textContent = ""; modalKeys = null;
+  build(p);
+  $("modal").hidden = false; modalOpen = true;
+  p.scrollTop = 0;
+  requestAnimationFrame(() => { const f = p.querySelector("textarea, .btn.primary, .opt"); if (f) f.focus({ preventScroll: true }); });
+  keys.left = keys.right = keys.jump = false;
+}
+function closeModal() { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); $("modal").hidden = true; modalOpen = false; modalKeys = null; lastFrame = performance.now(); }
+
+/* ================= question UI ================= */
+/* askGate(item, {kicker, hearts}) -> Promise<boolean correct> */
+function askGate(item, kicker) {
+  return new Promise(resolve => {
+    showModal(p => {
+      const order = shuffle(item.opts.map((_, i) => i));
+      const multi = item.k === "multi";
+      const picked = new Set();
+      p.append(el("span", { class: "kicker", text: kicker }), el("p", { class: "qtext", text: item.q }));
+      if (item.panel) {
+        const tb = el("table", { class: "labs" });
+        for (const [lab, val, f] of item.panel) tb.append(el("tr", {}, el("td", { text: lab }), el("td", { text: val }), el("td", { class: "f" + (f ? " f" + f : ""), text: f })));
+        p.append(el("div", { class: "labs-wrap" }, tb));
+      }
+      if (multi) p.append(el("p", { class: "muted", text: "Pick all that apply, then check." }));
+      const box = el("div", { class: "opts" });
+      const btns = order.map((oi, n) => {
+        const b = el("button", { type: "button", class: "opt", "aria-pressed": "false" }, el("span", { class: "k", text: String(n + 1) }), el("span", { text: item.opts[oi] }));
+        b.addEventListener("click", () => {
+          if (b.disabled) return;
+          if (multi) { picked.has(oi) ? picked.delete(oi) : picked.add(oi); b.setAttribute("aria-pressed", String(picked.has(oi))); checkBtn.disabled = picked.size === 0; }
+          else finish(new Set([oi]));
+        });
+        box.append(b); return b;
+      });
+      p.append(box);
+      const tail = el("div", { class: "actions" });
+      const checkBtn = el("button", { type: "button", class: "btn primary", text: "Check", disabled: "" , onclick: () => finish(picked) });
+      if (multi) tail.append(checkBtn);
+      p.append(tail);
+      modalKeys = e => {
+        const n = parseInt(e.key, 10);
+        if (n >= 1 && n <= btns.length) { btns[n - 1].click(); return true; }
+        if (e.key === "Enter" && multi && !checkBtn.disabled && checkBtn.isConnected) { checkBtn.click(); return true; }
+        return false;
+      };
+      function finish(sel) {
+        const ans = multi ? new Set(item.a) : new Set([item.a]);
+        const ok = sel.size === ans.size && [...sel].every(x => ans.has(x));
+        btns.forEach((b, n) => {
+          const oi = order[n]; b.disabled = true;
+          if (ans.has(oi) && sel.has(oi)) b.classList.add("right");
+          else if (ans.has(oi)) b.classList.add(multi ? "missed" : "right");
+          else if (sel.has(oi)) b.classList.add("wrong");
+        });
+        checkBtn.remove();
+        const why = el("div", { class: "why " + (ok ? "good" : "bad") },
+          el("span", { class: "verdict " + (ok ? "good" : "bad"), text: ok ? "Correct. The way opens." : "Not quite. You lose a heart." }),
+          multi && !ok ? el("p", { text: "Answer: " + item.a.map(i => item.opts[i]).join("; ") + "." }) : null,
+          el("p", { text: item.why }));
+        p.append(why);
+        const nt = noteEl(item.note); if (nt) p.append(nt);
+        const cont = el("button", { type: "button", class: "btn primary", text: "Continue", onclick: () => { closeModal(); resolve(ok); } });
+        p.append(el("div", { class: "actions" }, cont));
+        modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+        cont.focus({ preventScroll: true });
+        p.scrollTop = p.scrollHeight;
+      }
+    });
+  });
+}
+
+/* askRecall(item, kicker) -> Promise<score 0..2> */
+let dictTarget = null, dictState = "idle", dictBtn = null, dictBase = "";
+function wireDictation(d) {
+  d.onPartial(({ text }) => { if (dictTarget) dictTarget.value = (dictBase + " " + text).trim(); });
+  d.onFinal(({ text }) => { if (dictTarget) { dictBase = (dictBase + " " + text).trim(); dictTarget.value = dictBase; dictTarget.dispatchEvent(new Event("input")); } });
+  d.onState(({ state }) => { dictState = state; if (dictBtn) { dictBtn.classList.toggle("on", state === "listening" || state === "starting"); dictBtn.setAttribute("aria-label", state === "listening" ? "Stop dictation" : "Dictate"); } });
+}
+function markPrompt(item, ans) {
+  const rule = { num: "NUMBERS question: key numbers must be right; accept words for numbers, 'about', and overlapping ranges. A clearly wrong number caps the mark at 1.", fact: "FACT question: key fact must be right. For 'name N things', 2 = N correct, 1 = about half.", why: "MECHANISM question: 2 = the core mechanism in any words.", trial: "EVIDENCE question: 2 = result and direction right." }[item.type] || "";
+  return "You are marking a FRANZCOG candidate's short recall answer out of 2.\n\nThe answer may have been dictated through speech-to-text: read it as the words most likely SAID, and never mark down spelling or garbled words whose meaning is clear.\n\n"
+    + "Question: " + item.q + "\nModel answer: " + item.a + "\n" + rule
+    + "\n2 = correct. 1 = partly correct. 0 = wrong or missing. Do not demand wording beyond what the question asks.\n\nCandidate answer: " + ans
+    + "\n\nReply with only JSON: {\"score\": 0, 1 or 2, \"fix\": \"what was missing or wrong, under 15 words, or empty string\"}";
+}
+function askRecall(item, kicker, verbs) {
+  verbs = verbs || ["Full strike!", "A glancing blow.", "The guardian strikes back."];
+  return new Promise(resolve => {
+    showModal(p => {
+      const ta = el("textarea", { id: "recallAns", placeholder: "Type your answer, or tap the microphone and say it" });
+      dictTarget = ta; dictBase = "";
+      ta.addEventListener("input", () => { if (dictState !== "listening") dictBase = ta.value; });
+      const row = el("div", { class: "actions" });
+      const markBtn = el("button", { type: "button", class: "btn primary", text: CAP.sample ? "Mark it" : "Check my answer" });
+      const idkBtn = el("button", { type: "button", class: "btn quiet", text: "I don't know" });
+      row.append(markBtn, idkBtn);
+      if (CAP.dict) {
+        dictBtn = el("button", { type: "button", class: "btn mic", "aria-label": "Dictate" });
+        dictBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z"/></svg>';
+        dictBtn.addEventListener("click", () => {
+          if (dictState === "listening" || dictState === "starting") { CAP.dict.stop().catch(() => {}); return; }
+          dictBase = ta.value;
+          CAP.dict.start().catch(e => { if (e && e.code === "not_granted") { CAP.dict = null; dictBtn.remove(); } });
+        });
+        row.append(dictBtn);
+      }
+      p.append(el("span", { class: "kicker", text: kicker }), el("p", { class: "qtext", text: item.q }), ta, row);
+      modalKeys = e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { markBtn.click(); return true; } return false; };
+      const stopDict = () => { if (CAP.dict && (dictState === "listening" || dictState === "starting")) CAP.dict.stop().catch(() => {}); };
+      idkBtn.addEventListener("click", () => { stopDict(); reveal(""); });
+      markBtn.addEventListener("click", async () => { stopDict(); reveal(ta.value.trim()); });
+
+      async function reveal(ans) {
+        markBtn.disabled = idkBtn.disabled = true; ta.readOnly = true; if (dictBtn) dictBtn.disabled = true;
+        const out = el("div", { class: "why" });
+        const verdict = el("span", { class: "verdict", text: ans ? "Marking…" : "Here's the answer." });
+        const fix = el("p", { hidden: "" });
+        out.append(verdict, fix, el("div", { class: "model" }, el("span", { class: "lbl", text: "Model answer" }), el("p", { text: item.a })));
+        p.append(out);
+        out.scrollIntoView({ block: "nearest" });
+        const done = s => {
+          const cls = s === 2 ? "good" : s === 1 ? "part" : "bad";
+          verdict.className = "verdict " + cls; verdict.textContent = verbs[2 - s] + " (" + s + "/2)";
+          out.className = "why " + (s === 2 ? "good" : s === 0 ? "bad" : "");
+          const cont = el("button", { type: "button", class: "btn primary", text: "Continue", onclick: () => { closeModal(); dictTarget = null; dictBtn = null; resolve(s); } });
+          out.append(el("div", { class: "actions" }, cont));
+          modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+          cont.focus({ preventScroll: true });
+          p.scrollTop = p.scrollHeight;
+        };
+        const selfMark = msg => {
+          verdict.textContent = msg;
+          const sm = el("div", { class: "actions" }, el("span", { class: "muted", text: "Mark yourself:" }));
+          [[2, "Got it"], [1, "Partly"], [0, "Missed it"]].forEach(([s, lab]) => sm.append(el("button", { type: "button", class: "btn" + (s === 2 ? " primary" : ""), text: lab, onclick: () => { sm.remove(); done(s); } })));
+          out.append(sm);
+        };
+        if (!ans) { done(0); return; }
+        if (!CAP.sample) { selfMark("Compare with the model answer, then mark yourself."); return; }
+        try {
+          const r = await CAP.sample.json(markPrompt(item, ans), { modelTier: "quick" });
+          const s = Number(r && r.score);
+          if (![0, 1, 2].includes(s)) throw { code: "invalid_json" };
+          if (r.fix && s < 2) { fix.hidden = false; fix.append(el("b", { text: "Missing: " }), String(r.fix)); }
+          done(s);
+        } catch (e) {
+          const code = e && e.code;
+          if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) CAP.sample = null;
+          selfMark(code === "rate_limited" ? "Marking is busy. Mark yourself this time." : "Claude couldn't mark this one. Mark yourself.");
+        }
+      }
+    });
+  });
+}
+
+/* ================= review shrine ================= */
+async function runShrine() {
+  const ids = dueIds().slice(0, 15);
+  if (!ids.length) return;
+  let right = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const it = QB[ids[i]], kick = "Review Shrine · " + (i + 1) + " of " + ids.length + (it.level ? " · " + LEVEL_BY_ID[it.level].station : "");
+    let ok;
+    if (it.kind === "gate") ok = await askGate(it, kick);
+    else ok = (await askRecall(it, kick, ["Remembered.", "Partly there.", "Not yet."])) === 2;
+    if (ok) { srsHit(it.id); right++; } else srsMiss(it.id);
+  }
+  showModal(p => p.append(el("span", { class: "kicker", text: "Review Shrine" }), el("h2", { text: right + " of " + ids.length + " remembered" }),
+    el("p", { class: "lore", text: "Remembered questions move up the ladder and come back later. The rest return tomorrow." }),
+    el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Back to the map", onclick: () => { closeModal(); renderMap(); } }))));
+}
+
+/* ================= input ================= */
+const keys = { left: false, right: false, jump: false };
+let jumpPressed = false;
+const KEYMAP = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right", ArrowUp: "jump", KeyW: "jump", Space: "jump" };
+addEventListener("keydown", e => {
+  if (modalOpen) { if (modalKeys && e.target.tagName !== "TEXTAREA" && modalKeys(e)) e.preventDefault(); else if (modalKeys && e.target.tagName === "TEXTAREA" && (e.metaKey || e.ctrlKey) && modalKeys(e)) e.preventDefault(); return; }
+  if (!G) return;
+  const k = KEYMAP[e.code];
+  if (k) { if (k === "jump" && !keys.jump) jumpPressed = true; keys[k] = true; e.preventDefault(); }
+  if (e.code === "KeyE") { if (nearSign) openSign(nearSign); }
+  if (e.code === "Escape" || e.code === "KeyP") openPause();
+});
+addEventListener("keyup", e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
+addEventListener("blur", () => { keys.left = keys.right = keys.jump = false; });
+document.querySelectorAll(".padbtn").forEach(b => {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); if (k === "jump" && !keys.jump) jumpPressed = true; keys[k] = true; b.classList.add("on"); try { b.setPointerCapture(e.pointerId); } catch (x) {} };
+  const off = e => { keys[k] = false; b.classList.remove("on"); };
+  b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("lostpointercapture", off);
+  b.addEventListener("contextmenu", e => e.preventDefault());
+});
+
+/* ================= level building ================= */
+let G = null;
+function buildLevel(L) {
+  const R = rng(hashStr(L.id + "realm"));
+  const cols = [], plats = [], ev = [], spawns = [];
+  let calm = false, sinceFlat = 9;
+  const flat = n => { for (let i = 0; i < n; i++) cols.push(GR); sinceFlat += n; };
+  function filler(len) {
+    let n = 0;
+    while (n < len) {
+      const r = R();
+      if (!calm && r < 0.2 && sinceFlat >= 2) {
+        const w = 2 + Math.floor(R() * 2);
+        for (let i = 0; i < w; i++) cols.push(-1);
+        if (w === 3 && R() < 0.5) plats.push({ x: cols.length - 2, y: GR - 2, w: 1 });
+        sinceFlat = 0; flat(2); n += w + 2;
+      } else if (r < 0.4) {
+        const h = GR - 1 - Math.floor(R() * 2), w = 3 + Math.floor(R() * 3);
+        for (let i = 0; i < w; i++) cols.push(h); sinceFlat = 0; n += w;
+        if (!calm && w >= 4 && R() < 0.4) spawns.push({ x: cols.length - 2, row: h, kind: "walk" });
+      } else if (r < 0.6) {
+        flat(6); plats.push({ x: cols.length - 5, y: GR - 3, w: 3 }); n += 6;
+        if (!calm && R() < 0.5) spawns.push({ x: cols.length - 2, row: GR, kind: R() < 0.5 ? "fly" : "walk" });
+      } else {
+        const w = 3 + Math.floor(R() * 3); flat(w); n += w;
+        if (!calm && w >= 4 && R() < 0.6) spawns.push({ x: cols.length - 2, row: GR, kind: R() < 0.3 ? "fly" : "walk" });
+      }
+    }
+    flat(2);
+  }
+  flat(3); ev.push({ type: "check", x: 1, start: true }); flat(4);
+  L.segs.forEach((s, i) => {
+    if (s.t === "calm") { calm = s.on; return; }
+    filler(calm ? 5 : 8 + Math.floor(R() * 6));
+    if (s.t === "sign") { flat(2); ev.push({ type: "sign", x: cols.length, seg: s }); flat(3); }
+    else if (s.t === "check") { flat(1); ev.push({ type: "check", x: cols.length }); flat(3); }
+    else if (s.t === "gate") { flat(3); ev.push({ type: "door", kind: "gate", x: cols.length, seg: s }); flat(4); }
+    else if (s.t === "order" || s.t === "pick") {
+      const items = s.t === "order" ? s.steps.map((st, k) => ({ idx: k, short: st[0], full: st[1] }))
+        : [...s.good.map(g => ({ good: true, short: g[0], full: g[1] })), ...s.bad.map(b => ({ good: false, short: b[0], full: b[1], why: b[2] }))];
+      const gap = 3, x0 = cols.length + 2;
+      flat(3 + items.length * gap + 2);
+      const slots = shuffle(items.slice());
+      const gid = "grp" + i;
+      ev.push({ type: "zone", gid, seg: s, x0: x0 - 2, x1: cols.length });
+      slots.forEach((it, k) => {
+        const x = x0 + 1 + k * gap;
+        let row = GR;
+        if (k % 2 === 1) { plats.push({ x: x - 1, y: GR - 3, w: 3 }); row = GR - 3; }
+        ev.push({ type: s.t === "order" ? "tablet" : "orb", gid, x, row, item: it });
+      });
+      ev.push({ type: "door", kind: "barrier", gid, x: cols.length }); flat(4);
+    }
+  });
+  filler(8);
+  flat(2); ev.push({ type: "door", kind: "echo", x: cols.length }); flat(3);
+  ev.push({ type: "check", x: cols.length }); flat(4);
+  const ax = cols.length; flat(30);
+  plats.push({ x: ax + 7, y: GR - 3, w: 4 }, { x: ax + 19, y: GR - 3, w: 4 });
+  ev.push({ type: "door", kind: "arena", x: ax });
+  ev.push({ type: "boss", x: ax + 16 });
+  const endX = cols.length; flat(2);
+  const W = cols.length;
+  const tiles = new Uint8Array(W * ROWS);
+  cols.forEach((g, x) => { if (g >= 0) for (let y = g; y < ROWS; y++) tiles[y * W + x] = 1; });
+  for (const p of plats) for (let k = 0; k < p.w; k++) tiles[p.y * W + p.x + k] = 2;
+  for (let y = 0; y < ROWS; y++) tiles[y * W + W - 1] = 1;
+  return { W, tiles, cols, ev, spawns, arena: { x0: ax, x1: endX }, endX };
+}
+
+/* ================= game state ================= */
+function startLevel(L) {
+  const B = buildLevel(L);
+  G = {
+    L, t: L.theme, W: B.W, tiles: B.tiles, cols: B.cols, dyn: new Uint8Array(B.W), arena: B.arena,
+    player: { x: 1.2 * TILE, y: (GR - 1) * TILE - 28 + TILE, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0 },
+    hearts: MAXH, enemies: [], doors: [], signs: [], tablets: [], orbs: [], flags: [], zones: {}, shots: [], fx: [], boss: null, portal: null,
+    check: null, cam: 0, time: 0, slips: 0, missed: [], recall: [], recallPool: shuffle(L.boss.recall.filter(id => QB[id])), recallIdx: 0,
+    startX: 0, bossStarted: false, done: false
+  };
+  G.player.y = GR * TILE - G.player.h;
+  for (const e of B.ev) {
+    if (e.type === "check") G.flags.push({ x: e.x * TILE + 8, y: GR * TILE, on: !!e.start });
+    else if (e.type === "sign") G.signs.push({ x: e.x * TILE + 4, y: GR * TILE - 34, w: 26, h: 34, seg: e.seg, read: false });
+    else if (e.type === "door") {
+      const d = { col: e.x, kind: e.kind, seg: e.seg, gid: e.gid, open: e.kind === "arena", fade: 0 };
+      G.doors.push(d); if (!d.open) G.dyn[e.x] = 1;
+      if (e.gid) G.zones[e.gid].door = d;
+    }
+    else if (e.type === "zone") G.zones[e.gid] = { gid: e.gid, seg: e.seg, kind: e.seg.t, x0: e.x0 * TILE, x1: e.x1 * TILE, intro: false, next: 0, total: e.seg.t === "order" ? e.seg.steps.length : e.seg.good.length, got: 0, done: false };
+    else if (e.type === "tablet") G.tablets.push({ x: e.x * TILE + 5, y: e.row * TILE - 30, w: 22, h: 30, gid: e.gid, ...e.item, lit: false, cool: 0 });
+    else if (e.type === "orb") G.orbs.push({ x: e.x * TILE + 16, y: e.row * TILE - 30, r: 11, gid: e.gid, ...e.item, taken: false, ph: Math.random() * 6 });
+    else if (e.type === "boss") G.bossX = e.x * TILE;
+  }
+  G.check = G.flags[0];
+  for (const s of B.spawns) {
+    if (s.kind === "walk") G.enemies.push({ kind: "walk", x: s.x * TILE + 4, y: s.row * TILE - 22, w: 24, h: 22, vx: -48, vy: 0, alive: true, t: Math.random() * 6 });
+    else G.enemies.push({ kind: "fly", x: s.x * TILE, y: (s.row - 3.2) * TILE, w: 22, h: 18, bx: s.x * TILE, by: (s.row - 3.2) * TILE, alive: true, t: Math.random() * 6 });
+  }
+  G.startX = G.player.x; G.arenaX = G.arena.x0 * TILE;
+  $("mapScreen").hidden = true; $("gameScreen").hidden = false;
+  $("lvlChip").textContent = L.name; $("toasts").textContent = "";
+  $("bossbar").hidden = true; $("meterChip").hidden = !L.meter;
+  renderHearts(); renderSlips(); resize();
+  lastFrame = performance.now();
+  toast(L.station + ". Read the signs: the gates ask about them.");
+}
+function quitToMap() { G = null; closeModal(); $("gameScreen").hidden = true; $("mapScreen").hidden = false; renderMap(); }
+
+/* ================= HUD ================= */
+const HEART_FULL = '<svg viewBox="0 0 24 24"><path fill="#ff7a8a" stroke="#2a0a10" stroke-width="1.2" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.5h2c.7-1.3 2.2-2.5 4.3-2.5 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+const HEART_EMPTY = '<svg viewBox="0 0 24 24"><path fill="none" stroke="#7a6a8a" stroke-width="1.6" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.5h2c.7-1.3 2.2-2.5 4.3-2.5 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
+function renderHearts() { $("hearts").innerHTML = Array.from({ length: MAXH }, (_, i) => i < G.hearts ? HEART_FULL : HEART_EMPTY).join(""); $("hearts").setAttribute("aria-label", G.hearts + " of " + MAXH + " hearts"); }
+function renderSlips() { $("slipChip").textContent = "Slips " + G.slips; }
+function toast(msg, kind) {
+  const t = el("div", { class: "toast" + (kind ? " " + kind : ""), text: msg });
+  const box = $("toasts"); box.append(t); while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => t.remove(), 3600);
+}
+let nearSign = null;
+function updateNear() {
+  const p = G.player, cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+  let best = null, bd = 60;
+  const consider = (o, ox, oy, text, sign) => { const d = Math.hypot(ox - cx, oy - cy); if (d < bd) { bd = d; best = { text, sign: sign ? o : null }; } };
+  for (const s of G.signs) consider(s, s.x + 13, s.y + 17, "Sign: " + s.seg.title, true);
+  for (const t of G.tablets) if (!t.lit) consider(t, t.x + 11, t.y + 15, "Tablet: " + t.full);
+  for (const o of G.orbs) if (!o.taken) consider(o, o.x, o.y, "Orb: " + o.full);
+  nearSign = best && best.sign;
+  const box = $("near");
+  if (!best) { box.hidden = true; return; }
+  box.hidden = false;
+  if ($("nearText").textContent !== best.text) $("nearText").textContent = best.text;
+  $("nearBtn").hidden = !best.sign;
+}
+$("nearBtn").addEventListener("click", () => { if (nearSign) openSign(nearSign); });
+$("pauseBtn").addEventListener("click", e => { e.currentTarget.blur(); openPause(); });
+$("shrineBtn").addEventListener("click", runShrine);
+
+function openPause() {
+  if (!G || modalOpen) return;
+  showModal(p => p.append(
+    el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "Paused" }),
+    el("p", { class: "muted", text: "Slips so far: " + G.slips + ". Hearts: " + G.hearts + " of " + MAXH + "." }),
+    el("div", { class: "actions" },
+      el("button", { type: "button", class: "btn primary", text: "Resume", onclick: closeModal }),
+      el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(G.L, () => { closeModal(); openPause(); }) }),
+      el("button", { type: "button", class: "btn", text: "Back to the last banner", onclick: () => { closeModal(); respawn(); } }),
+      el("button", { type: "button", class: "btn quiet", text: "Leave the realm", onclick: quitToMap }))));
+}
+
+/* ================= events ================= */
+function openSign(s) {
+  s.read = true;
+  showModal(p => {
+    const cont = el("button", { type: "button", class: "btn primary", text: "Continue", onclick: closeModal });
+    p.append(el("span", { class: "kicker", text: "Sign · " + G.L.station }), el("h2", { text: s.seg.title }), el("p", { class: "lore", text: s.seg.text }), noteEl(s.seg.note), el("div", { class: "actions" }, cont));
+    modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+  });
+}
+function knowledgeHit(msg) {
+  G.slips++; renderSlips();
+  G.hearts--; renderHearts();
+  burst(G.player.x + 9, G.player.y + 10, "#ff7a8a", 14);
+  if (msg) toast(msg, "bad");
+  if (G.hearts <= 0) faint();
+}
+function openDoor(d) {
+  d.open = true; d.fade = 0.0001; G.dyn[d.col] = 0;
+  burst(d.col * TILE + 16, GR * TILE - 48, G.t.accent, 22);
+}
+async function triggerDoor(d) {
+  if (d.busy || d.open) return;
+  if (d.kind === "barrier") {
+    const z = G.zones[d.gid];
+    if (!d.nag || G.time - d.nag > 4) { d.nag = G.time; toast(z.kind === "order" ? "The veil holds. Touch every tablet in order first." : "The veil holds. Gather every right orb first."); }
+    return;
+  }
+  d.busy = true;
+  if (d.kind === "gate") {
+    const it = QB[d.seg.id];
+    const ok = await askGate(it, "Gate · " + G.L.station);
+    if (ok) srsHit(it.id); else { srsMiss(it.id); G.missed.push(it.id); }
+    openDoor(d);
+    if (!ok) knowledgeHit();
+  } else if (d.kind === "echo") {
+    const echoes = [...new Set(G.missed.filter(id => QB[id].kind === "gate"))];
+    if (!echoes.length) {
+      await new Promise(res => showModal(p => p.append(el("span", { class: "kicker", text: "Echo Gate" }), el("h2", { text: "No echoes" }), el("p", { class: "lore", text: "You answered every gate correctly. The guardian waits beyond." }), el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Continue", onclick: () => { closeModal(); res(); } })))));
+    } else {
+      await new Promise(res => showModal(p => p.append(el("span", { class: "kicker", text: "Echo Gate" }), el("h2", { text: echoes.length + " echo" + (echoes.length > 1 ? "es" : "") + " return" }), el("p", { class: "lore", text: "The questions you missed come back, shuffled. Answering them again now is what makes them stick." }), el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Face them", onclick: () => { closeModal(); res(); } })))));
+      for (let i = 0; i < echoes.length; i++) {
+        const ok = await askGate(QB[echoes[i]], "Echo Gate · " + (i + 1) + " of " + echoes.length);
+        if (!ok) { knowledgeHit(); if (!G || G.hearts <= 0) break; }
+      }
+    }
+    if (G) openDoor(d);
+  }
+  if (d) d.busy = false;
+}
+function enterZone(z) {
+  z.intro = true;
+  const s = z.seg;
+  showModal(p => {
+    const cont = el("button", { type: "button", class: "btn primary", text: "Begin", onclick: closeModal });
+    p.append(el("span", { class: "kicker", text: (z.kind === "order" ? "Step tablets" : "Orb field") + " · " + G.L.station }), el("h2", { text: s.title }), el("p", { class: "lore", text: s.prompt }),
+      el("p", { class: "muted", text: z.kind === "order" ? s.steps.length + " tablets, scattered. Walk into them in the right order. A wrong tablet costs a heart. Stand near one to read it in full." : s.good.length + " right orbs to gather. A wrong orb costs a heart and tells you why. Stand near one to read it in full." }),
+      el("div", { class: "actions" }, cont));
+    modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+  });
+}
+function zoneComplete(z) {
+  z.done = true; openDoor(z.door);
+  const s = z.seg;
+  showModal(p => {
+    const cont = el("button", { type: "button", class: "btn primary", text: "Onward", onclick: closeModal });
+    p.append(el("span", { class: "kicker", text: "Complete · " + s.title }));
+    if (z.kind === "order") p.append(el("h2", { text: "The sequence" }), el("ol", { class: "steps" }, ...s.steps.map(x => el("li", { text: x[1] }))));
+    else p.append(el("h2", { text: "What you gathered" }), el("ul", { class: "list" }, ...s.good.map(x => el("li", { text: x[1] }))),
+      el("h3", { text: "And why the others were wrong" }), el("ul", { class: "list" }, ...s.bad.map(x => el("li", {}, el("b", { text: x[1] + ": " }), x[2]))));
+    p.append(el("p", { class: "muted", text: s.why }), el("div", { class: "actions" }, cont));
+    modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+  });
+}
+function touchTablet(t) {
+  const z = G.zones[t.gid];
+  if (t.lit || t.cool > 0 || z.done) return;
+  if (t.idx === z.next) {
+    t.lit = true; z.next++; burst(t.x + 11, t.y, G.t.accent, 12);
+    toast("Step " + z.next + " of " + z.total + ": " + t.full, "good");
+    if (z.next === z.total) setTimeout(() => G && zoneComplete(z), 250);
+  } else {
+    t.cool = 1.2;
+    const want = G.tablets.find(x => x.gid === t.gid && x.idx === z.next);
+    knowledgeHit("That's step " + (t.idx + 1) + ". Step " + (z.next + 1) + " comes first: " + want.full + ".");
+  }
+}
+function touchOrb(o) {
+  const z = G.zones[o.gid];
+  if (o.taken || z.done) return;
+  o.taken = true;
+  if (o.good) {
+    z.got++; burst(o.x, o.y, G.t.accent, 14);
+    toast("Gathered " + z.got + " of " + z.total + ": " + o.full, "good");
+    if (z.got === z.total) setTimeout(() => G && zoneComplete(z), 250);
+  } else { burst(o.x, o.y, "#ff7a8a", 16); knowledgeHit(o.full + ": " + o.why); }
+}
+
+/* ================= boss ================= */
+function startBoss() {
+  G.bossStarted = true;
+  const d = G.doors.find(x => x.kind === "arena"); d.open = false; d.fade = 0; G.dyn[d.col] = 1;
+  const B = G.L.boss, flying = ["wraith", "shade", "oracle"].includes(B.shape);
+  G.boss = { x: G.bossX, y: GR * TILE - 70, w: 70, h: 70, vx: 0, vy: 0, hp: G.boss ? G.boss.hp : B.hp, max: B.hp, t: 0, act: 1.6, inv: 0, stun: 0, face: -1, flying, trail: [], dead: false };
+  $("bossbar").hidden = false; $("bossName").textContent = B.name; updateBossBar();
+  toast(B.name + " blocks the way. Stomp it to make it answer.");
+}
+function updateBossBar() { $("bossHp").style.width = Math.max(0, G.boss.hp / G.boss.max * 100) + "%"; }
+async function bossRecall() {
+  const b = G.boss;
+  if (G.recallIdx >= G.recallPool.length) { G.recallPool = shuffle(G.recallPool); G.recallIdx = 0; }
+  const it = QB[G.recallPool[G.recallIdx++]];
+  const s = await askRecall(it, G.L.boss.name + " asks · " + (it.src));
+  if (!G) return;
+  G.recall.push(s);
+  if (s === 2) srsHit(it.id); else srsMiss(it.id);
+  if (s < 2) G.missed.push(it.id);
+  b.hp -= s; b.inv = 1.4; b.stun = 0; updateBossBar();
+  if (s > 0) burst(b.x + b.w / 2, b.y + 10, G.t.accent, 24);
+  if (s === 0) knowledgeHit();
+  if (b.hp <= 0 && G) {
+    b.dead = true; burst(b.x + b.w / 2, b.y + b.h / 2, G.t.accent, 60); burst(b.x + b.w / 2, b.y + b.h / 2, "#ffffff", 30);
+    G.shots = []; $("bossbar").hidden = true;
+    G.portal = { x: G.arena.x1 * TILE - 3 * TILE, y: GR * TILE - 56 };
+    const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0;
+    toast(G.L.boss.name + " falls. A portal opens.", "good");
+  }
+}
+function finishLevel() {
+  G.done = true;
+  const L = G.L, avg = G.recall.length ? G.recall.reduce((a, b) => a + b, 0) / G.recall.length : 0;
+  const stars = 1 + (G.slips <= 2 ? 1 : 0) + (avg >= 1.5 ? 1 : 0);
+  P.stars[L.id] = Math.max(P.stars[L.id] || 0, stars); P.clears[L.id] = (P.clears[L.id] || 0) + 1; save();
+  const missed = [...new Set(G.missed)];
+  showModal(p => {
+    const bs = el("div", { class: "bigstars", "aria-label": stars + " of 3 stars" }); for (let i = 0; i < 3; i++) bs.append(i < stars ? el("b", { text: "★" }) : "☆");
+    p.append(el("span", { class: "kicker", text: "Realm cleared · " + L.station }), el("h2", { text: L.name }), bs,
+      el("div", { class: "stat" }, el("span", { text: "Knowledge slips (gates, tablets, orbs, guardian misses)" }), el("span", { text: String(G.slips) }),
+        el("span", { text: "Guardian recall average" }), el("span", { text: avg.toFixed(1) + " / 2 over " + G.recall.length })));
+    if (missed.length) {
+      p.append(el("h3", { text: "Sent to the Review Shrine" }), el("ul", { class: "missed-list" }, ...missed.map(id => { const it = QB[id]; return el("li", {}, el("div", { text: it.q }), el("div", { class: "a", text: answerText(it) })); })));
+    } else p.append(el("p", { class: "lore", text: "A clean run. Nothing goes to the shrine from this realm." }));
+    p.append(el("div", { class: "actions" },
+      el("button", { type: "button", class: "btn primary", text: "Back to the map", onclick: quitToMap }),
+      el("button", { type: "button", class: "btn", text: "Play again", onclick: () => { closeModal(); startLevel(L); } })));
+  });
+}
+
+/* ================= physics ================= */
+function solid(tx, ty) {
+  if (tx < 0 || tx >= G.W) return true;
+  if (G.dyn[tx] && ty < GR) return true;
+  if (ty < 0 || ty >= ROWS) return false;
+  return G.tiles[ty * G.W + tx] > 0;
+}
+function rectSolid(x, y, w, h) {
+  const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.01) / TILE), y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.01) / TILE);
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (solid(tx, ty)) return true;
+  return false;
+}
+function moveX(e, dx) {
+  e.x += dx;
+  if (rectSolid(e.x, e.y, e.w, e.h)) { e.x = dx > 0 ? Math.floor((e.x + e.w) / TILE) * TILE - e.w - 0.01 : (Math.floor(e.x / TILE) + 1) * TILE + 0.01; return true; }
+  return false;
+}
+function moveY(e, dy) {
+  e.y += dy;
+  if (rectSolid(e.x, e.y, e.w, e.h)) { e.y = dy > 0 ? Math.floor((e.y + e.h) / TILE) * TILE - e.h - 0.01 : (Math.floor(e.y / TILE) + 1) * TILE + 0.01; return true; }
+  return false;
+}
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function hurt(fromX) {
+  const p = G.player; if (p.inv > 0) return;
+  G.hearts--; renderHearts(); p.inv = 1.3;
+  p.vx = (p.x + p.w / 2 < fromX ? -1 : 1) * 260; p.vy = -320;
+  burst(p.x + 9, p.y + 10, "#ff7a8a", 10);
+  if (G.hearts <= 0) faint();
+}
+function respawn() {
+  const p = G.player, c = G.check;
+  p.x = c.x - 4; p.y = GR * TILE - p.h - 1; p.vx = p.vy = 0; p.inv = 1;
+  if (G.boss && !G.boss.dead) { const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0; G.bossStarted = false; G.boss.x = G.bossX; G.boss.y = GR * TILE - 70; G.boss.vx = 0; G.shots = []; $("bossbar").hidden = true; }
+}
+function faint() {
+  G.hearts = 0; renderHearts();
+  showModal(p => {
+    const cont = el("button", { type: "button", class: "btn primary", text: "Rise again", onclick: () => { closeModal(); G.hearts = MAXH; renderHearts(); respawn(); } });
+    p.append(el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "You fainted" }),
+      el("p", { class: "lore", text: "You wake at the last banner with full hearts. Opened gates stay open, and your missed questions are waiting at the Echo Gate." }), el("div", { class: "actions" }, cont,
+        el("button", { type: "button", class: "btn quiet", text: "Leave the realm", onclick: quitToMap })));
+    modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+  });
+}
+function burst(x, y, color, n) { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, s = 60 + Math.random() * 220; G.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 80, life: 0.5 + Math.random() * 0.5, c: color }); } }
+
+function update(dt) {
+  G.time += dt;
+  const p = G.player;
+  const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  if (dir) { p.vx += dir * 2000 * dt; p.vx = clamp(p.vx, -205, 205); p.face = dir; }
+  else { const f = 2200 * dt; p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f; }
+  if (jumpPressed) { p.buf = 0.13; jumpPressed = false; }
+  p.buf -= dt; p.coyote -= dt; p.inv -= dt;
+  p.vy += 1900 * dt; if (!keys.jump && p.vy < -240) p.vy += 2400 * dt; p.vy = Math.min(p.vy, 900);
+  if (p.buf > 0 && p.coyote > 0) { p.vy = -655; p.buf = 0; p.coyote = 0; }
+  if (moveX(p, p.vx * dt)) p.vx = 0;
+  p.ground = false;
+  if (moveY(p, p.vy * dt)) { if (p.vy > 0) { p.ground = true; p.coyote = 0.1; } p.vy = 0; }
+  p.x = clamp(p.x, 0, G.W * TILE - p.w);
+  p.anim += Math.abs(p.vx) * dt;
+  if (p.y > ROWS * TILE + 40) {
+    G.hearts--; renderHearts(); toast("You fell. Back to the last banner.", "bad");
+    if (G.hearts <= 0) { faint(); return; } respawn();
+  }
+  // checkpoints
+  for (const f of G.flags) if (!f.on && p.x > f.x - 8) { f.on = true; G.check = f; toast("Banner raised. You'll return here if you fall.", "good"); }
+  for (const f of G.flags) if (f.on && f.x > G.check.x && p.x > f.x - 8) G.check = f;
+  // signs
+  for (const s of G.signs) if (!s.read && overlap(p, s)) { openSign(s); return; }
+  // zones
+  for (const z of Object.values(G.zones)) if (!z.intro && p.x + p.w > z.x0 && p.x < z.x1) { enterZone(z); return; }
+  for (const t of G.tablets) { t.cool -= dt; if (overlap(p, t)) touchTablet(t); }
+  for (const o of G.orbs) if (!o.taken && Math.hypot(p.x + p.w / 2 - o.x, p.y + p.h / 2 - (o.y + Math.sin(G.time * 2 + o.ph) * 4)) < o.r + 12) touchOrb(o);
+  // doors
+  for (const d of G.doors) {
+    if (d.fade > 0) d.fade += dt * 2;
+    if (!d.open && !d.busy) { const dx = d.col * TILE; if (p.x + p.w >= dx - 3 && p.x <= dx + TILE + 3 && p.y + p.h > GR * TILE - 3 * TILE) { triggerDoor(d); if (modalOpen) return; } }
+  }
+  // enemies
+  for (const e of G.enemies) {
+    if (!e.alive) continue; e.t += dt;
+    if (e.kind === "walk") {
+      e.vy = Math.min(e.vy + 1900 * dt, 900);
+      if (moveX(e, e.vx * dt)) e.vx = -e.vx;
+      const ahead = e.vx > 0 ? e.x + e.w + 2 : e.x - 2;
+      if (!solid(Math.floor(ahead / TILE), Math.floor((e.y + e.h + 4) / TILE))) e.vx = -e.vx;
+      if (moveY(e, e.vy * dt)) e.vy = 0;
+      if (e.y > ROWS * TILE) e.alive = false;
+    } else { e.x = e.bx + Math.sin(e.t * 0.9) * 70; e.y = e.by + Math.sin(e.t * 2.2) * 18; }
+    if (overlap(p, e)) {
+      if (p.vy > 60 && p.y + p.h - e.y < 16) { e.alive = false; p.vy = -430; burst(e.x + e.w / 2, e.y + e.h / 2, G.t.enemy, 14); }
+      else hurt(e.x + e.w / 2);
+    }
+  }
+  // boss
+  if (!G.bossStarted && p.x > G.arenaX + 2.5 * TILE) startBoss();
+  const b = G.boss;
+  if (b && !b.dead && G.bossStarted) {
+    b.t += dt; b.inv -= dt;
+    const cx = p.x + p.w / 2, bx = b.x + b.w / 2;
+    b.face = cx < bx ? -1 : 1;
+    const ax0 = (G.arena.x0 + 1) * TILE, ax1 = (G.arena.x1 - 1) * TILE - b.w;
+    if (b.flying) {
+      b.x += clamp(cx - bx, -1, 1) * 60 * dt; b.x = clamp(b.x, ax0, ax1);
+      b.y = GR * TILE - b.h - 34 + Math.sin(b.t * 1.6) * 24;
+    } else {
+      b.vx = b.face * (b.inv > 0 ? 20 : 68);
+      b.vy = Math.min(b.vy + 1900 * dt, 900);
+      moveX(b, b.vx * dt); b.x = clamp(b.x, ax0, ax1);
+      if (moveY(b, b.vy * dt)) b.vy = 0;
+    }
+    b.trail.unshift({ x: bx, y: b.y + b.h * 0.6 }); if (b.trail.length > 40) b.trail.pop();
+    b.act -= dt;
+    if (b.act <= 0 && b.inv <= 0) {
+      b.act = 1.6 + Math.random() * 1.2;
+      if (!b.flying && Math.random() < 0.4) b.vy = -620;
+      else {
+        const n = Math.random() < 0.5 ? 1 : 3;
+        for (let i = 0; i < n; i++) { const ang = Math.atan2((p.y + p.h / 2) - (b.y + b.h / 2), cx - bx) + (i - (n - 1) / 2) * 0.28; G.shots.push({ x: bx, y: b.y + b.h / 2, vx: Math.cos(ang) * 210, vy: Math.sin(ang) * 210, life: 4 }); }
+      }
+    }
+    if (overlap(p, b)) {
+      if (p.vy > 40 && p.y + p.h - b.y < 22 && b.inv <= 0) { p.vy = -560; b.inv = 99; bossRecall(); return; }
+      else if (b.inv < 98) hurt(bx);
+    }
+  }
+  for (const s of G.shots) {
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
+    if (Math.hypot(s.x - (p.x + p.w / 2), s.y - (p.y + p.h / 2)) < 14) { s.life = 0; hurt(s.x); }
+    if (solid(Math.floor(s.x / TILE), Math.floor(s.y / TILE))) s.life = 0;
+  }
+  G.shots = G.shots.filter(s => s.life > 0);
+  if (G.portal && !G.done && Math.hypot(p.x + p.w / 2 - G.portal.x, p.y + p.h / 2 - G.portal.y) < 30) { finishLevel(); return; }
+  for (const f of G.fx) { f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 600 * dt; f.life -= dt; }
+  G.fx = G.fx.filter(f => f.life > 0);
+  updateNear();
+  if (G.L.meter) {
+    const m = G.L.meter, prog = clamp((p.x - G.startX) / (G.arenaX - G.startX), 0, 1);
+    const v = Math.round(m.from + (m.to - m.from) * prog), chip = $("meterChip");
+    chip.textContent = m.label + " " + v + " " + m.unit;
+    chip.classList.toggle("warn", (m.warnAbove != null && v > m.warnAbove) || (m.warnBelow != null && v < m.warnBelow));
+  }
+}
+
+/* ================= rendering ================= */
+const cv = $("cv"), ctx = cv.getContext("2d");
+let VW = 480, VH = 384, SC = 1, OFFY = 0, DPR = 1;
+function resize() {
+  const r = $("stage").getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * DPR)); cv.height = Math.max(1, Math.round(r.height * DPR));
+  SC = Math.min(r.height / (ROWS * TILE), r.width / (11 * TILE));
+  VW = r.width / SC; VH = r.height / SC; OFFY = Math.max(0, VH - ROWS * TILE);
+}
+addEventListener("resize", () => { if (G) resize(); });
+
+function skyY(type, x, base, amp) {
+  switch (type) {
+    case "hills": return base - (Math.sin(x * 0.006) * 26 + Math.sin(x * 0.017 + 1) * 12 + 20) * amp;
+    case "trees": { const c = Math.floor(x / 26), f = (x % 26) / 26, h = 40 + h2(c, 3) * 60; return base - (h * (1 - Math.abs(f - 0.5) * 2)) * amp; }
+    case "spires": { const c = Math.floor(x / 44), f = (x % 44) / 44, h = 30 + h2(c, 5) * 120; return base - Math.max(0, h * (1 - Math.abs(f - 0.5) * 2.6)) * amp; }
+    case "towers": { const c = Math.floor(x / 52), f = (x % 52) / 52; if (f < 0.18) return base - 10 * amp; const h = 40 + h2(c, 7) * 110; return base - (f > 0.42 && f < 0.62 && h2(c, 2) > 0.5 ? h + 16 : h) * amp; }
+    case "temple": { const c = Math.floor(x / 70), f = (x % 70) / 70, h = 50 + h2(c, 9) * 70; if (f < 0.1) return base - 8 * amp; return base - (h + Math.max(0, 22 - Math.abs(f - 0.55) * 60)) * amp; }
+    case "cave": { const c = Math.floor(x / 30), f = (x % 30) / 30; return base - (20 + h2(c, 4) * 40) * (1 - Math.abs(f - 0.5) * 1.4) * amp; }
+  }
+  return base;
+}
+function drawSkyline(c, t, scroll, W, base, par, color, amp) {
+  c.fillStyle = color; c.beginPath(); c.moveTo(0, c.canvas.height * 4);
+  const step = 4;
+  for (let sx = 0; sx <= W + step; sx += step) c.lineTo(sx, skyY(t.skyline, sx + scroll * par + 1000, base, amp));
+  c.lineTo(W + step, c.canvas.height * 4); c.closePath(); c.fill();
+  if (t.skyline === "cave") {
+    c.beginPath(); c.moveTo(0, -10);
+    for (let sx = 0; sx <= W + step; sx += step) { const x = sx + scroll * par + 500, cc = Math.floor(x / 34), f = (x % 34) / 34; c.lineTo(sx, (10 + h2(cc, 8) * 60) * Math.max(0, 1 - Math.abs(f - 0.5) * 2.2) * amp); }
+    c.lineTo(W + step, -10); c.closePath(); c.fill();
+  }
+}
+function drawBackground() {
+  const t = G.t, W = VW, H = VH;
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, t.sky[0]); g.addColorStop(1, t.sky[1]); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (t.moons) {
+    for (let i = 0; i < 4; i++) {
+      const mx = ((i * 211 + 90) - G.cam * 0.04) % (W + 200); const x = mx < -100 ? mx + W + 200 : mx, y = OFFY + 40 + i * 22 + Math.sin(G.time * 0.2 + i) * 6, r = 9 + i * 3;
+      ctx.fillStyle = "#f3e9ff"; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+      ctx.fillStyle = t.sky[0]; ctx.beginPath(); ctx.arc(x + r * (0.3 + i * 0.35), y - 2, r, 0, 6.283); ctx.fill();
+    }
+  } else if (t.particles === "embers" || t.particles === "drops") {
+    ctx.fillStyle = "rgba(255,200,150,0.18)"; ctx.beginPath(); ctx.arc(W * 0.78, OFFY + 70, 46, 0, 6.283); ctx.fill();
+  } else if (t.particles !== "dust" && t.skyline !== "cave") {
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.beginPath(); ctx.arc(W * 0.8, OFFY + 60, 20, 0, 6.283); ctx.fill();
+  }
+  ctx.save(); ctx.translate(0, OFFY);
+  drawSkyline(ctx, t, G.cam, W, GR * TILE - 60, 0.2, t.far, 1.4);
+  drawSkyline(ctx, t, G.cam, W, GR * TILE - 10, 0.45, t.near, 1);
+  if (t.river) { ctx.fillStyle = "rgba(90,170,230,0.35)"; ctx.fillRect(0, GR * TILE - 22, W, 14); ctx.fillStyle = "rgba(200,235,255,0.35)"; for (let i = 0; i < 12; i++) { const x = ((i * 97 - G.cam * 0.6 + G.time * 30) % (W + 40) + W + 40) % (W + 40) - 20; ctx.fillRect(x, GR * TILE - 17, 16, 2); } }
+  if (t.torches) for (let i = 0; i < 8; i++) { const x = ((i * 260 - G.cam * 0.7) % (W + 260) + W + 260) % (W + 260) - 60, y = GR * TILE - 90; ctx.fillStyle = "#3a3040"; ctx.fillRect(x - 2, y, 4, 18); const fl = 6 + Math.sin(G.time * 12 + i) * 2; const rg = ctx.createRadialGradient(x, y - 4, 1, x, y - 4, 40); rg.addColorStop(0, "rgba(255,190,90,0.55)"); rg.addColorStop(1, "rgba(255,190,90,0)"); ctx.fillStyle = rg; ctx.fillRect(x - 40, y - 44, 80, 80); ctx.fillStyle = "#ffcf6a"; ctx.beginPath(); ctx.ellipse(x, y - 4, 3.5, fl, 0, 0, 6.283); ctx.fill(); }
+  ctx.restore();
+  // ambient particles
+  const N = 34;
+  for (let i = 0; i < N; i++) {
+    const sx = h2(i, 1), sy = h2(i, 2), sp = 0.4 + h2(i, 3);
+    let x = sx * W - G.cam * 0.3 * sp, y = sy * H;
+    const tt = G.time * sp;
+    switch (t.particles) {
+      case "stars": ctx.fillStyle = "rgba(255,255,255," + (0.3 + 0.5 * Math.abs(Math.sin(tt * 2 + i))) + ")"; y = sy * H * 0.6; break;
+      case "bubbles": y = H - ((sy * H + tt * 30) % (H + 20)); x += Math.sin(tt * 2 + i) * 6; ctx.fillStyle = "rgba(210,255,250,0.35)"; break;
+      case "drops": y = (sy * H + tt * 120) % (H + 20); ctx.fillStyle = "rgba(255,140,120,0.35)"; break;
+      case "leaves": y = (sy * H + tt * 22) % (H + 20); x += Math.sin(tt + i) * 20; ctx.fillStyle = "rgba(170,210,120,0.5)"; break;
+      case "dust": x += Math.sin(tt * 0.5 + i) * 14; y += Math.cos(tt * 0.4 + i) * 10; ctx.fillStyle = "rgba(220,210,240,0.22)"; break;
+      case "snow": y = (sy * H + tt * 34) % (H + 20); x += Math.sin(tt + i) * 10; ctx.fillStyle = "rgba(235,245,255,0.7)"; break;
+      case "petals": y = (sy * H + tt * 18) % (H + 20); x += Math.sin(tt * 1.3 + i) * 24; ctx.fillStyle = G.calmNow ? "rgba(255,230,245,0.75)" : "rgba(255,190,225,0.5)"; break;
+      case "embers": y = H - ((sy * H + tt * 40) % (H + 20)); x += Math.sin(tt * 3 + i) * 5; ctx.fillStyle = "rgba(255," + (140 + (i % 5) * 20) + ",60,0.7)"; break;
+    }
+    x = ((x % (W + 20)) + W + 20) % (W + 20) - 10;
+    const r = t.particles === "bubbles" ? 2 + sp * 2 : t.particles === "drops" ? 1.2 : 1.4 + sp;
+    if (t.particles === "drops") ctx.fillRect(x, y, 1.5, 7); else { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill(); }
+  }
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function label(text, x, y, color) {
+  ctx.font = "600 10px 'Atkinson Hyperlegible', sans-serif"; const w = ctx.measureText(text).width + 8;
+  ctx.fillStyle = "rgba(12,10,18,0.78)"; rr(x - w / 2, y - 9, w, 13, 4); ctx.fill();
+  ctx.fillStyle = color || "#f4ecd8"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x, y - 2.5);
+}
+function drawTiles() {
+  const t = G.t, x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
+  for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) {
+    const v = G.tiles[ty * G.W + tx]; if (!v) continue;
+    const X = tx * TILE, Y = ty * TILE;
+    if (v === 1) {
+      ctx.fillStyle = t.ground; ctx.fillRect(X, Y, TILE + 0.5, TILE + 0.5);
+      if (h2(tx, ty) > 0.55) { ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(X + h2(tx, ty + 9) * 24, Y + h2(tx + 4, ty) * 24, 5, 3); }
+      if (ty === 0 || !G.tiles[(ty - 1) * G.W + tx]) { ctx.fillStyle = t.top; ctx.fillRect(X, Y, TILE + 0.5, 6); ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(X, Y + 6, TILE + 0.5, 2); }
+    } else {
+      ctx.fillStyle = t.plat; rr(X + 1, Y + 2, TILE - 2, 14, 4); ctx.fill(); ctx.fillStyle = t.top; ctx.fillRect(X + 3, Y + 2, TILE - 6, 3);
+    }
+  }
+  if (G.t.water) {
+    const prog = clamp((G.player.x - G.startX) / (G.arenaX - G.startX), 0, 1), wy = ROWS * TILE - 40 - prog * 150;
+    ctx.fillStyle = "rgba(60,200,220,0.16)"; ctx.fillRect(G.cam, wy, VW, ROWS * TILE - wy + 40);
+    ctx.fillStyle = "rgba(200,255,255,0.35)"; for (let x = Math.floor(G.cam / 24) * 24; x < G.cam + VW; x += 24) ctx.fillRect(x + Math.sin(G.time * 2 + x) * 3, wy + Math.sin(G.time * 1.5 + x * 0.1) * 2, 12, 2);
+  }
+}
+function drawPlayer() {
+  const p = G.player; if (p.inv > 0 && Math.floor(p.inv * 12) % 2) return;
+  const x = p.x, y = p.y, f = p.face, step = p.ground ? Math.sin(p.anim * 0.12) * 3 : 2;
+  ctx.save(); ctx.translate(x + p.w / 2, y); ctx.scale(f, 1);
+  ctx.fillStyle = "#a8324a"; ctx.beginPath(); ctx.moveTo(-6, 8); ctx.lineTo(-13 - Math.abs(p.vx) * 0.02, 24 + Math.sin(G.time * 8) * 1.5); ctx.lineTo(-2, 22); ctx.fill();
+  ctx.fillStyle = "#2b2440"; ctx.fillRect(-5, 22, 4, 6 + step * 0.5); ctx.fillRect(2, 22, 4, 6 - step * 0.5);
+  ctx.fillStyle = "#f3f1ea"; rr(-7, 9, 15, 15, 3); ctx.fill();
+  ctx.fillStyle = "#5b7bd6"; ctx.fillRect(-2, 10, 4, 12);
+  ctx.strokeStyle = "#8a93a6"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 12, 4.5, 0.2, 3); ctx.stroke(); ctx.fillStyle = "#c9d0dc"; ctx.beginPath(); ctx.arc(3.5, 17, 1.8, 0, 6.283); ctx.fill();
+  ctx.fillStyle = "#e9bf98"; ctx.beginPath(); ctx.arc(1, 4, 6, 0, 6.283); ctx.fill();
+  ctx.fillStyle = "#3b2418"; ctx.beginPath(); ctx.arc(0, 2, 6.2, 3.3, 6.1); ctx.fill(); ctx.fillRect(-6, 0, 3, 6);
+  ctx.fillStyle = "#1a1220"; ctx.fillRect(4, 3, 1.8, 2.2);
+  ctx.restore();
+}
+function drawEnemy(e) {
+  const t = G.t;
+  if (e.kind === "walk") {
+    const bob = Math.abs(Math.sin(e.t * 8)) * 2, cx = e.x + e.w / 2, dir = Math.sign(e.vx) || 1;
+    ctx.fillStyle = t.enemy; ctx.beginPath(); ctx.ellipse(cx, e.y + e.h - 9 - bob, 12, 10 + bob * 0.3, 0, 3.14, 6.283); ctx.fill(); ctx.fillRect(e.x, e.y + e.h - 10 - bob, e.w, 8);
+    ctx.fillStyle = t.enemy2; ctx.fillRect(e.x + 3, e.y + e.h - 3, 6, 3); ctx.fillRect(e.x + e.w - 9, e.y + e.h - 3, 6, 3);
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(cx - 4 + dir * 2, e.y + 8 - bob, 3.4, 0, 6.283); ctx.arc(cx + 4 + dir * 2, e.y + 8 - bob, 3.4, 0, 6.283); ctx.fill();
+    ctx.fillStyle = "#14101c"; ctx.beginPath(); ctx.arc(cx - 3 + dir * 3, e.y + 8.5 - bob, 1.6, 0, 6.283); ctx.arc(cx + 5 + dir * 3, e.y + 8.5 - bob, 1.6, 0, 6.283); ctx.fill();
+  } else {
+    const cx = e.x + e.w / 2, cy = e.y + e.h / 2, fl = Math.sin(e.t * 14) * 5;
+    ctx.fillStyle = t.enemy2; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.moveTo(cx - 4, cy); ctx.lineTo(cx - 15, cy - 6 - fl); ctx.lineTo(cx - 9, cy + 3); ctx.moveTo(cx + 4, cy); ctx.lineTo(cx + 15, cy - 6 - fl); ctx.lineTo(cx + 9, cy + 3); ctx.fill(); ctx.globalAlpha = 1;
+    const rg = ctx.createRadialGradient(cx, cy, 1, cx, cy, 11); rg.addColorStop(0, "#ffffff"); rg.addColorStop(0.4, t.enemy); rg.addColorStop(1, t.enemy2); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, 8, 0, 6.283); ctx.fill();
+    ctx.fillStyle = "#14101c"; ctx.fillRect(cx - 4, cy - 2, 2, 3); ctx.fillRect(cx + 2, cy - 2, 2, 3);
+  }
+}
+function drawDoor(d) {
+  if (d.open && (d.fade === 0 || d.fade >= 1)) return;
+  const a = d.open ? 1 - d.fade : 1, X = d.col * TILE, gy = GR * TILE, t = G.t;
+  ctx.save(); ctx.globalAlpha = a;
+  const tint = d.kind === "arena" ? "255,120,110" : d.kind === "echo" ? "200,170,255" : d.kind === "barrier" ? "255,220,150" : "255,236,200";
+  const vg = ctx.createLinearGradient(0, 0, 0, gy); vg.addColorStop(0, "rgba(" + tint + ",0)"); vg.addColorStop(1, "rgba(" + tint + ",0.32)");
+  ctx.fillStyle = vg; ctx.fillRect(X + 4, 0, TILE - 8, gy);
+  for (let i = 0; i < 5; i++) { const yy = (G.time * 40 + i * 60) % gy; ctx.fillStyle = "rgba(" + tint + ",0.5)"; ctx.fillRect(X + 8 + (i % 3) * 6, gy - yy, 2, 8); }
+  ctx.fillStyle = "#4a4458"; ctx.fillRect(X - 6, gy - 96, 10, 96); ctx.fillRect(X + TILE - 4, gy - 96, 10, 96);
+  ctx.fillStyle = "#5d566e"; rr(X - 10, gy - 108, TILE + 20, 14, 4); ctx.fill();
+  ctx.fillStyle = "#373244"; ctx.fillRect(X - 6, gy - 96, 3, 96); ctx.fillRect(X + TILE + 3, gy - 96, 3, 96);
+  const glow = 0.6 + 0.4 * Math.sin(G.time * 3);
+  ctx.fillStyle = "rgba(" + tint + "," + glow + ")"; ctx.font = "700 22px Cinzel, Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const glyph = d.kind === "gate" ? "?" : d.kind === "echo" ? "↺" : d.kind === "arena" ? "✕" : "◆";
+  ctx.fillText(glyph, X + TILE / 2, gy - 52);
+  ctx.restore();
+  if (!d.open && d.kind !== "arena") label(d.kind === "gate" ? "Gate" : d.kind === "echo" ? "Echo Gate" : "Veil", X + TILE / 2, gy - 118, t.accent);
+}
+function drawSign(s) {
+  ctx.fillStyle = "#6b4a2e"; ctx.fillRect(s.x + 11, s.y + 12, 4, 22);
+  ctx.fillStyle = "#c9a26a"; rr(s.x, s.y, 26, 16, 3); ctx.fill(); ctx.fillStyle = "#8a6a40"; ctx.fillRect(s.x + 4, s.y + 5, 18, 1.5); ctx.fillRect(s.x + 4, s.y + 9, 14, 1.5);
+  if (!s.read) { ctx.fillStyle = G.t.accent; ctx.font = "700 16px Cinzel, serif"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillText("!", s.x + 13, s.y - 6 + Math.sin(G.time * 4) * 3); }
+}
+function drawFlag(f) {
+  ctx.fillStyle = "#8a8496"; ctx.fillRect(f.x, f.y - 52, 3, 52);
+  const w = Math.sin(G.time * 5 + f.x) * 3;
+  ctx.fillStyle = f.on ? G.t.top : "#55506a"; ctx.beginPath(); ctx.moveTo(f.x + 3, f.y - 52); ctx.lineTo(f.x + 24 + w, f.y - 45); ctx.lineTo(f.x + 3, f.y - 37); ctx.fill();
+}
+function drawTablet(tb) {
+  const lit = tb.lit;
+  if (lit) { const rg = ctx.createRadialGradient(tb.x + 11, tb.y + 15, 2, tb.x + 11, tb.y + 15, 30); rg.addColorStop(0, "rgba(255,240,200,0.5)"); rg.addColorStop(1, "rgba(255,240,200,0)"); ctx.fillStyle = rg; ctx.fillRect(tb.x - 20, tb.y - 15, 62, 60); }
+  ctx.fillStyle = lit ? G.t.top : "#6e6880"; rr(tb.x, tb.y, tb.w, tb.h, 5); ctx.fill();
+  ctx.fillStyle = lit ? "rgba(0,0,0,0.35)" : "#56506a";
+  if (lit) { ctx.font = "700 14px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(tb.idx + 1), tb.x + 11, tb.y + 16); }
+  else { ctx.fillRect(tb.x + 5, tb.y + 8, 12, 2); ctx.fillRect(tb.x + 5, tb.y + 14, 9, 2); ctx.fillRect(tb.x + 5, tb.y + 20, 11, 2); }
+  label(tb.short, tb.x + 11, tb.y - 8, lit ? G.t.accent : "#f4ecd8");
+}
+function drawOrb(o) {
+  if (o.taken) return;
+  const y = o.y + Math.sin(G.time * 2 + o.ph) * 4;
+  const rg = ctx.createRadialGradient(o.x - 3, y - 3, 1, o.x, y, o.r + 6); rg.addColorStop(0, "#ffffff"); rg.addColorStop(0.35, G.t.accent); rg.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(o.x, y, o.r + 6, 0, 6.283); ctx.fill();
+  ctx.strokeStyle = G.t.top; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(o.x, y, o.r, 0, 6.283); ctx.stroke();
+  label(o.short, o.x, y - o.r - 8);
+}
+function drawBoss(b) {
+  if (b.dead) return;
+  if (b.inv > 0 && b.inv < 98 && Math.floor(b.inv * 10) % 2) return;
+  const S = G.L.boss.shape, col = G.t.boss, x = b.x, y = b.y, w = b.w, h = b.h, cx = x + w / 2, f = b.face, t = G.time;
+  const eyes = (ey, sp, r) => {
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(cx - sp + f * 3, ey, r, 0, 6.283); ctx.arc(cx + sp + f * 3, ey, r, 0, 6.283); ctx.fill();
+    ctx.fillStyle = "#14101c"; ctx.beginPath(); ctx.arc(cx - sp + f * 5, ey + 1, r * 0.45, 0, 6.283); ctx.arc(cx + sp + f * 5, ey + 1, r * 0.45, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = "#14101c"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx - sp - r, ey - r - 2); ctx.lineTo(cx - sp + r, ey - r + 2); ctx.moveTo(cx + sp + r, ey - r - 2); ctx.lineTo(cx + sp - r, ey - r + 2); ctx.stroke();
+  };
+  if (S === "wyrm" || S === "serpent") {
+    for (let i = b.trail.length - 1; i > 0; i -= 4) { const s = b.trail[i]; const r = 14 - i * 0.2; ctx.fillStyle = i % 8 === 0 && S === "serpent" ? G.t.enemy : col; ctx.beginPath(); ctx.arc(s.x - f * i * 2.2, s.y + Math.sin(t * 4 + i * 0.3) * 6, Math.max(5, r), 0, 6.283); ctx.fill(); }
+    ctx.fillStyle = col; rr(x + 6, y + 10, w - 12, h - 14, 22); ctx.fill();
+    if (S === "wyrm") { ctx.fillStyle = "rgba(255,255,255,0.18)"; for (let i = 0; i < 3; i++) ctx.fillRect(x + 16 + i * 14, y + 40, 8, 8); }
+    else { ctx.strokeStyle = G.t.enemy; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, y + 44, 12, t * 2, t * 2 + 5); ctx.stroke(); }
+    eyes(y + 26, 12, 6);
+    ctx.fillStyle = "#ff5a6a"; ctx.fillRect(cx + f * 26, y + 40 + Math.sin(t * 9) * 2, f * 12, 2.5);
+  } else if (S === "wraith" || S === "shade") {
+    ctx.globalAlpha = 0.9; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y + h * 0.45); ctx.arc(cx, y + h * 0.45, w / 2, 3.14, 0);
+    for (let i = 0; i <= 6; i++) ctx.lineTo(x + w - i * (w / 6), y + h - (i % 2 ? 12 : 0) + Math.sin(t * 6 + i) * 4);
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.fillStyle = S === "wraith" ? "#2a0a12" : "#0a1a2e"; ctx.beginPath(); ctx.ellipse(cx - 12 + f * 3, y + 28, 6, 9, 0, 0, 6.283); ctx.ellipse(cx + 12 + f * 3, y + 28, 6, 9, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = S === "wraith" ? "#ff4a5a" : "#9fd3ff"; ctx.beginPath(); ctx.arc(cx - 12 + f * 5, y + 30, 2.4, 0, 6.283); ctx.arc(cx + 12 + f * 5, y + 30, 2.4, 0, 6.283); ctx.fill();
+  } else if (S === "oracle") {
+    ctx.strokeStyle = G.t.top; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(cx, y + h / 2, w * 0.7, h * 0.25, Math.sin(t) * 0.3, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = G.t.accent; ctx.font = "700 10px Cinzel, serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const runes = "BRCA1·RRSO·"; for (let i = 0; i < runes.length; i++) { const a = t * 0.8 + i / runes.length * 6.283; ctx.fillText(runes[i], cx + Math.cos(a) * w * 0.7, y + h / 2 + Math.sin(a) * h * 0.25); }
+    const rg = ctx.createRadialGradient(cx, y + h / 2, 4, cx, y + h / 2, w / 2); rg.addColorStop(0, "#fff8ea"); rg.addColorStop(1, "#e8c9a0"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, y + h / 2, w / 2 - 4, 0, 6.283); ctx.fill();
+    const px = clamp((G.player.x - cx) / 40, -1, 1) * 10, py = clamp((G.player.y - y) / 60, -1, 1) * 8;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx + px, y + h / 2 + py, 15, 0, 6.283); ctx.fill(); ctx.fillStyle = "#140a04"; ctx.beginPath(); ctx.arc(cx + px, y + h / 2 + py, 7, 0, 6.283); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(cx + px - 4, y + h / 2 + py - 4, 2.5, 0, 6.283); ctx.fill();
+  } else if (S === "golem") {
+    ctx.fillStyle = col; rr(x + 8, y + 26, w - 16, h - 26, 6); ctx.fill(); rr(x + 16, y + 2, w - 32, 28, 6); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; rr(x - 2, y + 30, 14, 26, 4); ctx.fill(); rr(x + w - 12, y + 30, 14, 26, 4); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 20, y + 40); ctx.lineTo(x + 30, y + 50); ctx.lineTo(x + 26, y + 62); ctx.stroke();
+    ctx.fillStyle = "#ffb070"; ctx.fillRect(cx - 12 + f * 3, y + 12, 7, 5); ctx.fillRect(cx + 5 + f * 3, y + 12, 7, 5);
+  } else {
+    ctx.fillStyle = col;
+    if (S === "slime") { ctx.beginPath(); ctx.moveTo(x, y + h); ctx.quadraticCurveTo(x - 4, y + 4 + Math.sin(t * 3) * 4, cx, y + Math.sin(t * 3) * 4); ctx.quadraticCurveTo(x + w + 4, y + 4 + Math.sin(t * 3) * 4, x + w, y + h); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.beginPath(); ctx.ellipse(cx - 14, y + 18, 6, 9, -0.4, 0, 6.283); ctx.fill(); for (let i = 0; i < 3; i++) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + 14 + i * 20, y + h + 3 + Math.sin(t * 4 + i) * 2, 4, 0, 6.283); ctx.fill(); } }
+    else if (S === "leviathan") { ctx.beginPath(); ctx.ellipse(cx, y + h * 0.55, w / 2, h * 0.45, 0, 0, 6.283); ctx.fill(); ctx.beginPath(); ctx.moveTo(cx - 10, y + 10); ctx.lineTo(cx, y - 14 + Math.sin(t * 4) * 3); ctx.lineTo(cx + 12, y + 10); ctx.fill(); ctx.beginPath(); ctx.moveTo(x + 4, y + h * 0.6); ctx.lineTo(x - 14, y + h * 0.4 + Math.sin(t * 5) * 5); ctx.lineTo(x + 6, y + h * 0.8); ctx.fill(); ctx.beginPath(); ctx.moveTo(x + w - 4, y + h * 0.6); ctx.lineTo(x + w + 14, y + h * 0.4 + Math.sin(t * 5) * 5); ctx.lineTo(x + w - 6, y + h * 0.8); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.2)"; for (let i = 0; i < 4; i++) ctx.fillRect(x + 14 + i * 12, y + h * 0.7, 6, 4); }
+    else { rr(x + 4, y + 8, w - 8, h - 8, 16); ctx.fill(); ctx.fillStyle = "#e8dcc0"; ctx.beginPath(); ctx.moveTo(x + 12, y + 14); ctx.lineTo(x + 4, y - 8); ctx.lineTo(x + 22, y + 10); ctx.moveTo(x + w - 12, y + 14); ctx.lineTo(x + w - 4, y - 8); ctx.lineTo(x + w - 22, y + 10); ctx.fill(); ctx.fillStyle = "#fff"; ctx.fillRect(cx - 12, y + 48, 4, 7); ctx.fillRect(cx + 8, y + 48, 4, 7); ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(cx - 14, y + 46, 28, 3); }
+    eyes(y + (S === "leviathan" ? 34 : 28), 13, 7);
+  }
+  if (b.inv >= 98) { ctx.fillStyle = "#ffe9a8"; for (let i = 0; i < 3; i++) { const a = t * 4 + i * 2.09; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * 20, y - 10 + Math.sin(a) * 5, 3, 0, 6.283); ctx.fill(); } }
+}
+function render() {
+  ctx.setTransform(DPR * SC, 0, 0, DPR * SC, 0, 0);
+  const p = G.player;
+  const target = p.x + p.w / 2 - VW * 0.42;
+  G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * 0.12;
+  G.calmNow = false;
+  drawBackground();
+  ctx.save(); ctx.translate(-Math.round(G.cam * 10) / 10, OFFY);
+  drawTiles();
+  for (const f of G.flags) drawFlag(f);
+  for (const s of G.signs) drawSign(s);
+  for (const d of G.doors) drawDoor(d);
+  for (const tb of G.tablets) drawTablet(tb);
+  for (const o of G.orbs) drawOrb(o);
+  for (const e of G.enemies) if (e.alive) drawEnemy(e);
+  if (G.boss) drawBoss(G.boss);
+  for (const s of G.shots) { const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, G.t.enemy); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill(); }
+  if (G.portal) { const q = G.portal; ctx.save(); ctx.translate(q.x, q.y); for (let i = 0; i < 3; i++) { ctx.strokeStyle = i === 1 ? G.t.top : G.t.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 18 - i * 4, 30 - i * 6, 0, G.time * (2 + i), G.time * (2 + i) + 4.5); ctx.stroke(); } ctx.restore(); label("Portal", q.x, q.y - 40, G.t.accent); }
+  drawPlayer();
+  for (const f of G.fx) { ctx.globalAlpha = clamp(f.life * 2, 0, 1); ctx.fillStyle = f.c; ctx.fillRect(f.x - 2, f.y - 2, 4, 4); }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+/* ================= loop ================= */
+let lastFrame = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!G || $("gameScreen").hidden) return;
+  const dt = Math.min((now - lastFrame) / 1000, 1 / 30); lastFrame = now;
+  if (!modalOpen && !G.done) update(dt);
+  else jumpPressed = false;
+  if (G) render();
+}
+requestAnimationFrame(frame);
+renderMap(); renderStoreNote(); initCaps();
+</script>
