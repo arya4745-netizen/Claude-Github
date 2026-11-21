@@ -189,7 +189,17 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
   .qtext { font-size: 17px; }
   .shrine { grid-template-columns: 1fr; }
 }
-@media (prefers-reduced-motion: reduce) { .realm, .toast { transition: none; animation: none; } }
+@keyframes panelIn { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+.panel.in { animation: panelIn .24s cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes heartHit { 0%, 100% { transform: none; } 20% { transform: translateX(-5px) rotate(-3deg); } 40% { transform: translateX(5px) rotate(3deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+@keyframes heartGain { 0%, 100% { transform: none; } 40% { transform: scale(1.18); } }
+#hearts.hit { animation: heartHit .45s ease; background: rgba(120, 20, 30, .6); }
+#hearts.gain { animation: heartGain .4s ease; }
+@keyframes pulse { 0%, 100% { transform: none; box-shadow: none; } 40% { transform: scale(1.12); box-shadow: 0 0 14px rgba(143, 211, 255, .7); } }
+#insightChip.pulse { animation: pulse .5s ease; }
+#modal:not([hidden]) { animation: fadeIn .2s ease; }
+@keyframes fadeIn { from { background: rgba(8, 6, 12, 0); } }
+@media (prefers-reduced-motion: reduce) { .realm, .toast, .panel.in, #hearts, #insightChip, #modal { transition: none; animation: none !important; } }
 </style>
 
 <div id="app">
