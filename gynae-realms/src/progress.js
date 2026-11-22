@@ -151,7 +151,7 @@ function chestInteract() {
   if (!ch) return false;
   if (ch.state === "open") return true;
   if (ch.state === "sealed") { toast("The lock is reshuffling. Try again in a moment."); return true; }
-  const all = G.L.segs.filter(s => (s.t === "gate" || s.t === "leap") && s.q.k !== "multi").map(s => s.id);
+  const all = (G.L.run && G.L.run.chest.length ? G.L.run.chest : G.L.segs.filter(s => (s.t === "gate" || s.t === "leap") && s.q.k !== "multi").map(s => s.id)).filter(id => QB[id]);
   const fresh = all.filter(id => !ch.asked.includes(id)), pick = fresh.length ? fresh : all;
   const id = pick[Math.floor(Math.random() * pick.length)];
   ch.asked.push(id); ch.busy = true;

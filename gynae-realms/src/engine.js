@@ -45,12 +45,14 @@ function mergeInto(src) {
   if (!src) return;
   for (const key of ["stars", "clears", "best", "pearls"]) for (const [k, v] of Object.entries(src[key] || {})) P[key][k] = Math.max(P[key][k] || 0, v);
   for (const [k, v] of Object.entries(src.srs || {})) if (!P.srs[k] || (v.at || 0) > (P.srs[k].at || 0)) P.srs[k] = v;
+  if (src.gen) { P.gen = Object.assign(P.gen || {}, src.gen); for (const [k, v] of Object.entries(src.gen)) if (!QB[k]) QB[k] = v; }
+  if (src.seen) { P.seen = P.seen || {}; for (const [k, v] of Object.entries(src.seen)) if (!P.seen[k] || v.length > P.seen[k].length) P.seen[k] = v; }
   const rank = c => c ? c.level * 1e6 + c.xp + c.items.length : -1;
   if (src.char && rank(src.char) > rank(P.char)) P.char = src.char;
 }
 function save() {
   P.updated = Date.now();
-  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, updated: P.updated };
+  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, gen: P.gen || {}, seen: P.seen || {}, updated: P.updated };
   lsWrite(body);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -84,7 +86,9 @@ function renderStoreNote() {
 }
 
 /* spaced review */
-function srsMiss(id) { const s = P.srs[id] || { box: 0, misses: 0 }; s.box = 0; s.misses = (s.misses || 0) + 1; s.due = Date.now() + DAY; s.at = Date.now(); P.srs[id] = s; save(); }
+function srsMiss(id) {
+  const q = QB[id]; if (q && (q.gen || q.bank)) { P.gen = P.gen || {}; P.gen[id] = q; }
+  const s = P.srs[id] || { box: 0, misses: 0 }; s.box = 0; s.misses = (s.misses || 0) + 1; s.due = Date.now() + DAY; s.at = Date.now(); P.srs[id] = s; save(); }
 function srsHit(id) { const s = P.srs[id]; if (!s) return; s.box = Math.min((s.box || 0) + 1, LADDER.length - 1); s.due = Date.now() + LADDER[s.box] * DAY; s.at = Date.now(); save(); }
 function dueIds() { const now = Date.now(); return Object.entries(P.srs).filter(([id, s]) => QB[id] && s.due <= now).sort((a, b) => a[1].due - b[1].due).map(([id]) => id); }
 
@@ -121,6 +125,7 @@ function paintBanner(cv, L) {
 
 /* ================= briefing / codex ================= */
 function openBriefing(L) {
+  if (CAP.sample) prefetchRealm(L);
   const notes = [];
   L.segs.forEach(s => { const n = s.note || (s.q && s.q.note); if (n) notes.push(n); });
   showModal(p => {
@@ -136,7 +141,7 @@ function openBriefing(L) {
         el("span", { class: "kbd", text: "Shift" }), " or ", el("span", { class: "kbd", text: "X" }), " dash, ", el("span", { class: "kbd", text: "↓" }), " ground pound, ",
         el("span", { class: "kbd", text: "H" }), " spend Insight at a leap, ", el("span", { class: "kbd", text: "E" }), " reread a sign. On a phone, use the buttons under the game and turn it sideways."),
       el("div", { class: "actions" },
-        el("button", { type: "button", class: "btn primary", text: "Enter the realm", onclick: () => { closeModal(); startLevel(L); } }),
+        el("button", { type: "button", class: "btn primary", text: "Enter the realm", onclick: () => beginRealm(L) }),
         el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(L, () => openBriefing(L)) }),
         el("button", { type: "button", class: "btn quiet", text: "Back", onclick: closeModal })));
   });
@@ -393,7 +398,7 @@ function buildLevel(L) {
   const R = rng(hashStr(L.id + "realm-v2"));
   const cols = [];
   const B = { plats: [], ev: [], spawns: [], springs: [], spikes: [], pearls: [], potions: [], tips: [], pulses: [], droppers: [], chests: [] };
-  const facts = shuffle((FACTS[L.id] || []).slice(), R); let factN = 0;
+  const facts = shuffle(((L.run && L.run.wisps) || FACTS[L.id] || []).slice(0, 4), R); let factN = 0;
   let mode = "normal", fillerN = 0, chimneys = 0, potions = 0, checks = 0;
   const X = () => cols.length;
   const col = top => { const c = new Uint8Array(ROWS); if (top >= 0) for (let y = top; y < ROWS; y++) c[y] = 1; cols.push(c); return c; };
@@ -432,7 +437,7 @@ function buildLevel(L) {
       case "chest": { flat(9); block(x + 1, GR - 3, 2); block(x + 4, GR - 6, 3); B.chests.push({ x: (x + 5) * TILE + 16, y: (GR - 6) * TILE }); tip(x, "chest", "A riddle chest sits up high. Stand beside it and press ↓, then answer to open it."); break; }
       case "pocket": { flat(2); const s = X(); for (let k = 0; k < 3; k++) { const c = col(GR); c[GR] = 4; c[GR + 1] = 0; } flat(2); B.pearls.push({ x: (s + 1) * TILE + 16, y: (GR + 1) * TILE + 16 }); tip(s, "pocket", "Cracked floor: jump, then press down to ground-pound through it. Something glints below."); break; }
       case "high": { flat(8); block(x + 1, GR - 3, 3); block(x + 5, GR - 6, 2); B.pearls.push({ x: (x + 6) * TILE, y: (GR - 7) * TILE + 6 }); tip(x, "high", "A pearl sits high above. Double jump from the ledge."); break; }
-      case "gap": { flat(1); const s = X(); pit(7); oneway(s + 3, GR - 1, 1, "crumble"); B.pearls.push({ x: (s + 3) * TILE + 16, y: (GR - 4) * TILE }); flat(2); tip(s, "gap", "Wide gap: double jump and dash (Shift or X) to cross. The pearl hangs over the middle."); break; }
+      case "gap": { flat(1); const s = X(); pit(7); oneway(s, GR, 2, "move", { ax: s * TILE + 2, bx: (s + 5) * TILE - 2, sp: 0.7, ph: 0 }); B.pearls.push({ x: (s + 3) * TILE + 16, y: (GR - 4) * TILE + 6 }); flat(2); tip(s, "gap", "A pearl hangs over the pit. Step onto the moving platform, ride it under the pearl, then jump straight up."); break; }
     }
   }
   function filler(len) {
@@ -462,7 +467,7 @@ function buildLevel(L) {
   }
   /* True/false fork: TRUE = high road on stone, FALSE = low road beneath. The wrong lane ends in a solid veil (tile 5), the right one in a passable veil (tile 6). */
   function fork(k) {
-    const tf = (CHASE_TF[L.id] || [])[k]; if (!tf) return;
+    const tf = ((L.run && L.run.forks) || CHASE_TF[L.id] || [])[k]; if (!tf) return;
     flat(3);
     const a = X();
     col(GR);
@@ -488,7 +493,7 @@ function buildLevel(L) {
   }
 
   flat(3); B.ev.push({ type: "check", x: 1, start: true }); flat(4);
-  L.segs.forEach((s, i) => {
+  (L.run ? L.run.segs : L.segs).forEach((s, i) => {
     if (s.t === "calm") { mode = s.on ? "calm" : "normal"; return; }
     if (s.t === "chase") return;
     filler(mode === "calm" ? 5 : 9 + Math.floor(R() * 6));
@@ -542,7 +547,7 @@ let G = null;
 function startLevel(L) {
   const B = buildLevel(L);
   const R = rng(hashStr(L.id + "pearls"));
-  const pearlFacts = shuffle(L.boss.recall.filter(id => QB[id]), R);
+  const pearlFacts = shuffle(((L.run && L.run.recall) || L.boss.recall).filter(id => QB[id]), R);
   G = {
     L, t: L.theme, W: B.W, tiles: B.tiles, dyn: new Uint8Array(B.W), arena: B.arena,
     player: { x: 1.2 * TILE, y: 0, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0, jumps: 1, wall: 0, lock: 0, dash: 0, dashes: 1, dashCd: 0, pound: 0, hang: 0, onPlat: null, sq: 0, stepT: 0, blink: 2, spin: 0, cape: null, hflash: 0 },
@@ -552,7 +557,7 @@ function startLevel(L) {
     plats: B.plats.map(p => ({ ...p, x0: p.x, y0: p.y, t: 0, dx: 0 })), springs: B.springs, spikes: B.spikes, tips: B.tips,
     pearls: B.pearls.map((p, i) => ({ ...p, taken: false, fact: pearlFacts[i % pearlFacts.length] })), potions: B.potions,
     boss: null, portal: null, chase: null, room: null, carry: null, roomLock: null, zoom: 1, check: null, cam: 0, time: 0, shake: 0, look: 0, hitstop: 0, iris: RM ? 1 : 0, exitT: 0, scoreShown: 0,
-    slips: 0, missed: [], recall: [], recallPool: shuffle(L.boss.recall.filter(id => QB[id])), recallIdx: 0,
+    slips: 0, missed: [], recall: [], recallPool: shuffle(((L.run && L.run.recall) || L.boss.recall).filter(id => QB[id])), recallIdx: 0,
     startX: 0, bossStarted: false, done: false
   };
   G.player.y = GR * TILE - G.player.h;
@@ -881,7 +886,7 @@ function finishLevel() {
     else p.append(el("p", { class: "lore", text: "A clean run. Nothing goes to the shrine from this realm." }));
     p.append(el("div", { class: "actions" },
       el("button", { type: "button", class: "btn primary", text: "Back to the map", onclick: quitToMap }),
-      el("button", { type: "button", class: "btn", text: "Play again", onclick: () => { closeModal(); startLevel(L); } })));
+      el("button", { type: "button", class: "btn", text: "Play again", onclick: () => beginRealm(L) })));
   });
 }
 

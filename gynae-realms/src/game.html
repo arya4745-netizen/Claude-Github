@@ -158,6 +158,8 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: c
 .slot .lbl { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); }
 .inv { display: flex; flex-direction: column; gap: 6px; }
 .invrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 6px; }
+.spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brass); animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .opt.cleared { opacity: .35; text-decoration: line-through; }
 .pips { letter-spacing: 1px; color: #8fd3ff; }
 .pips i { font-style: normal; color: #4a4f6a; }

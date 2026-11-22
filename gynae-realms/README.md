@@ -24,6 +24,9 @@ A browser platformer for studying **Week 1: General Gynae** (RANZCOG OSCE practi
 - **Guardians** ask open recall (OSCE Recall Drill plus station notes), typed or dictated and marked out of 2 by Claude. At half health they enrage: a spike crown that only a ground pound breaks, shockwaves or shot rings.
 - Where the 2023 deck is out of date (letrozole first line, tamoxifen 20 mg, danazol, evening primrose oil, egg-collection timing, MHT window, empirical endometriosis treatment), the game teaches current guidance and shows what the notes said.
 
+## Fresh questions every run
+Opening a realm's briefing asks Claude to write a new set of questions from that station's material (teaching signs, cases, updates to the notes, the Recall Drill): gate and leap MCQs (including pick-all-that-apply), true/false wisps and chase lanes, and guardian recall questions. It's told to use only facts in the material, to follow the current guidance where the notes are outdated, and to avoid the stems you've seen recently (remembered per realm). Starting the realm waits for the set, with an option to skip. Without Claude, runs use the question bank least-recently-seen first, topped up with MCQs built from the Recall Drill, so consecutive runs don't repeat. Missed questions, including generated ones, go to the Review Shrine for spaced review.
+
 ## Thinking while you play
 - **Fact wisps** float through each realm carrying a short statement. Stomp the TRUE ones (XP, Insight); stomping a FALSE one costs a heart and shows the correction.
 - **True-or-false lanes** inside every chase: a statement appears, and you climb to the high road for TRUE or stay low for FALSE. The wrong lane is a dead end while the chase closes in.
@@ -38,17 +41,19 @@ Eighteen pieces of equipment across six slots (head, body, hands, feet, charm, t
 ## Puzzle rooms
 One single-screen room per realm, after the chase. The camera locks and zooms so the whole puzzle fits. Press ↓ on the ground to pull levers, pick up and place items; R resets. Each room turns one fact into a machine, and wrong moves play out their consequence:
 
-| Realm | Room | Image |
+Every room is randomised per attempt (positions, patients, scenarios), so it tests the concept rather than memory:
+
+| Realm | Room | What it tests |
 |---|---|---|
-| PCOS | The Liver's Chains | Insulin syrup floods the liver's SHBG forge, so free-testosterone ogres run loose |
-| IVF/OHSS | The Leaking Vessels | hCG lightning cracks vessels: plasma floods the belly, blood thickens; diuretics make it worse |
-| HMB | Too Deep to Burn | Ablation scorches only the icing; adenomyosis bleeds from deep in the sponge |
-| Endometriosis | Water Under the Bridge | Clamp the uterine-artery bridge at the cervix, not over the wriggling ureter river |
-| Cystectomy | Virchow's Triangle | Shrink the clot by fixing stasis and hypercoagulability |
-| Collapse | The Vagal Brake | The cervix is wired to a brake on the heart; lift the rate to power the lift |
-| Torsion | Untwist the Ovary | A balloon on a twisted string darkens while Doppler still shows flow |
-| Fibroid | The Glycine Tank | Fresh water diluting a salty sea: choose the medium before you cut |
-| Tamoxifen | Two Faces of Tamoxifen | Shields the breast, waters the womb; paroxetine jams the CYP2D6 forge |
+| PCOS | The Liver's Chains | Only three levers can be powered: choose the three that raise SHBG (COCP, metformin, lifestyle) |
+| IVF/OHSS | The Leaking Vessels | Seal the leak (GnRH agonist trigger, freeze-all), IV fluids not diuretics, LMWH not NSAIDs |
+| HMB | Too Deep to Burn | A random patient decides the treatment (LNG-IUS vs hysterectomy; COCP contraindications); ablation fails deep disease |
+| Endometriosis | Water Under the Bridge | Mirrored layout: stent the tube that wriggles, then clamp the artery hugging the cervix |
+| Cystectomy | Virchow's Triangle | Prevent or treat? Prophylactic vs treatment-dose LMWH, stockings, mobilisation; D-dimer and aspirin traps |
+| Collapse | The Vagal Brake | Order matters: help, stop, position, then atropine; IV adrenaline and sitting up are traps |
+| Torsion | Untwist the Ovary | Read the twist and turn against it; don't trust a normal Doppler; conserve the dusky ovary |
+| Fibroid | The Glycine Tank | Add up fibroid deficits, know a frail vs fit patient's limits, choose glycine or saline, or stage it |
+| Tamoxifen | Two Faces of Tamoxifen | Random CYP2D6 inhibitors vs safe alternatives; no oestrogen or tibolone; investigate bleeding |
 
 Room text lives in `src/content.js` (`ROOMS`); room machines in `src/rooms.js`.
 
@@ -62,6 +67,7 @@ Double jump, wall slide and wall jump, air dash, ground pound. Wall-jump shafts,
 - `src/rooms.js` – the puzzle-room framework and the nine room machines.
 - `src/polish.js` – terrain rendering (cached chunks), lighting and depth, sprite outlines, timed hazards, true/false lanes.
 - `src/progress.js` – XP, levels, stats, equipment, riddle chests, guardian loot, fact wisps and the character sheet.
+- `src/questions.js` – fresh question generation per run, validation, seen-stem tracking and the bank fallback.
 - `drill-week1.json` – week-one questions extracted from the OSCE Recall Drill (`tools/extract-drill.mjs`).
 - `index.html` – built single-file game: `node tools/build.mjs`.
 
