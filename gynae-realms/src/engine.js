@@ -48,11 +48,14 @@ function mergeInto(src) {
   if (src.gen) { P.gen = Object.assign(P.gen || {}, src.gen); for (const [k, v] of Object.entries(src.gen)) if (!QB[k]) QB[k] = v; }
   if (src.seen) { P.seen = P.seen || {}; for (const [k, v] of Object.entries(src.seen)) if (!P.seen[k] || v.length > P.seen[k].length) P.seen[k] = v; }
   const rank = c => c ? c.level * 1e6 + c.xp + c.items.length : -1;
-  if (src.char && rank(src.char) > rank(P.char)) P.char = src.char;
+  if (src.char && !src.chars && !P.chars) P.char = src.char;
+  if (src.chars) { P.chars = P.chars || []; for (const c of src.chars) { const i = P.chars.findIndex(x => x.id === c.id); if (i < 0) P.chars.push(c); else if (rank(c) > rank(P.chars[i])) P.chars[i] = c; } }
+  if (src.deleted) { P.deleted = Array.from(new Set([...(P.deleted || []), ...src.deleted])); P.chars = (P.chars || []).filter(c => !P.deleted.includes(c.id)); }
+  if (src.activeChar && (!P.activeChar || (src.updated || 0) >= (P.updated || 0))) P.activeChar = src.activeChar;
 }
 function save() {
   P.updated = Date.now();
-  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, gen: P.gen || {}, seen: P.seen || {}, updated: P.updated };
+  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, chars: P.chars || [], activeChar: P.activeChar || null, deleted: P.deleted || [], gen: P.gen || {}, seen: P.seen || {}, updated: P.updated };
   lsWrite(body);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -64,7 +67,7 @@ const CAP = {};
 async function initCaps() {
   const local = lsRead(); mergeInto(local); if (local) storeMode = "local";
   const C = window.claude;
-  if (!C || !C.use) { renderStoreNote(); renderMap(); return; }
+  if (!C || !C.use) { renderStoreNote(); renderMap(); renderLevelChip(); return; }
   C.use("sample").then(s => { CAP.sample = s; }).catch(() => { CAP.sample = null; });
   C.use("dictation").then(d => { CAP.dict = d; if (d) wireDictation(d); }).catch(() => { CAP.dict = null; });
   try {
@@ -640,7 +643,7 @@ function updateNear() {
 $("nearBtn").addEventListener("click", () => { if (nearSign) openSign(nearSign); });
 $("pauseBtn").addEventListener("click", e => { e.currentTarget.blur(); openPause(); });
 $("shrineBtn").addEventListener("click", runShrine);
-$("charBtn").addEventListener("click", () => openCharacter(() => { closeModal(); renderMap(); renderLevelChip(); }));
+$("charBtn").addEventListener("click", () => { const back = () => { closeModal(); renderMap(); renderLevelChip(); }; if (hasChars()) openCharacter(back); else openCreator({ after: back }); });
 
 /* Leap of Judgement card */
 let leapShown = null;
@@ -1416,29 +1419,34 @@ function limb(x, y, len, ang, w, col, end) {
   if (end) { ctx.fillStyle = end; ctx.beginPath(); ctx.arc(0, len + 0.5, w * 0.62, 0, 6.283); ctx.fill(); }
   ctx.restore();
 }
-function drawCape(p) {
+function drawCape(p, look) {
   const c = p.cape; if (!c) return;
-  ctx.fillStyle = "#a8324a";
+  look = look || heroLook();
+  ctx.fillStyle = look.cape;
   ctx.beginPath();
   for (let i = 0; i < c.length; i++) { const w = 3.6 - i * 0.35; ctx.lineTo(c[i].x, c[i].y - w); }
   for (let i = c.length - 1; i >= 0; i--) { const w = 3.6 - i * 0.35; ctx.lineTo(c[i].x, c[i].y + w); }
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = "#7a2034"; ctx.lineWidth = 1; ctx.beginPath(); c.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+  ctx.strokeStyle = shade(look.cape, -0.3); ctx.lineWidth = 1; ctx.beginPath(); c.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
 }
-function drawHero() {
-  const p = G.player;
-  drawCape(p);
+/* Draws the registrar. p: body state (position, velocity, pose); look: appearance; time: animation clock. */
+function drawHero(p, look, time) {
+  p = p || G.player; look = look || heroLook();
+  const T = time != null ? time : G.time;
+  drawCape(p, look);
   const run = p.ground && Math.abs(p.vx) > 20, ph = p.anim * 0.075, sw = Math.sin(ph);
-  const bob = run ? -Math.abs(Math.cos(ph)) * 1.8 : p.ground ? Math.sin(G.time * 3) * 0.5 : 0;
+  const bob = run ? -Math.abs(Math.cos(ph)) * 1.8 : p.ground ? Math.sin(T * 3) * 0.5 : 0;
   let sx = 1 - p.sq * 0.7, sy = 1 + p.sq, lean = 0;
-  // limb angles (radians, positive = forward) for: front leg, back leg, front arm, back arm
-  let fl = 0, bl = 0, fa = 0.08 * Math.sin(G.time * 3), ba = -0.08 * Math.sin(G.time * 3);
+  let fl = 0, bl = 0, fa = 0.08 * Math.sin(T * 3), ba = -0.08 * Math.sin(T * 3);
   if (p.dash > 0) { fl = -0.7; bl = -1.1; fa = -1.4; ba = -1.1; lean = 0.32; sx = 1.18; sy = 0.86; }
   else if (p.pound) { fl = 1.5; bl = 1.3; fa = 2.7; ba = 2.5; }
   else if (p.wall) { fl = 0.55; bl = 0.15; fa = 2.0; ba = 1.5; lean = -0.1; }
   else if (!p.ground && p.vy < 0) { fl = 0.95; bl = -0.25; fa = 2.5; ba = -0.7; }
-  else if (!p.ground) { fl = 0.3; bl = -0.4; fa = 2.1 + Math.sin(G.time * 18) * 0.2; ba = 1.8 - Math.sin(G.time * 18) * 0.2; }
+  else if (!p.ground) { fl = 0.3; bl = -0.4; fa = 2.1 + Math.sin(T * 18) * 0.2; ba = 1.8 - Math.sin(T * 18) * 0.2; }
   else if (run) { fl = sw * 0.95; bl = -sw * 0.95; fa = -sw * 0.85; ba = sw * 0.85; lean = clamp(Math.abs(p.vx) / 205, 0, 1) * 0.12; }
+  const O = OUTFITS[look.outfit] || OUTFITS.coat;
+  const body = O.body === "scrub" ? look.scrub : O.body, sleeve = O.sleeve === "scrub" ? look.scrub : O.sleeve === "skin" ? look.skin : O.sleeve;
+  const legs = O.legs === "scrub" ? shade(look.scrub, -0.15) : O.legs;
   ctx.save();
   ctx.translate(p.x + p.w / 2, p.y + p.h);
   ctx.scale(p.face * sx, sy);
@@ -1446,24 +1454,46 @@ function drawHero() {
   if (p.flip) { ctx.translate(0, -14); ctx.rotate(p.flip * Math.PI); ctx.translate(0, 14); }
   ctx.rotate(lean);
   ctx.translate(0, -p.h + bob);
-  const hip = 21, sh = 12;
-  limb(-1, hip, 7, bl, 4, "#221c34", "#151020");
-  limb(-1, sh, 7, ba, 3.2, "#d9d4c8", "#e2b48e");
-  ctx.fillStyle = "#f3f1ea"; rr(-7, 9, 15, 14, 4); ctx.fill();
-  ctx.fillStyle = "#e4e0d6"; ctx.fillRect(-7, 19, 15, 4);
-  ctx.fillStyle = "#5b7bd6"; ctx.beginPath(); ctx.moveTo(-1, 10); ctx.lineTo(2, 10); ctx.lineTo(1.6, 19); ctx.lineTo(0.5, 21); ctx.lineTo(-0.6, 19); ctx.fill();
+  const hip = 21, sh = 12, hb = run ? Math.sin(ph * 2) * 0.4 : 0;
+  const hairFlow = clamp(-p.vy / 600, -1, 1) * 1.5 + (run ? Math.abs(sw) : 0);
+  // hair behind the head
+  ctx.fillStyle = look.hair;
+  if (look.hairStyle === "long") { rr(-8 - hairFlow * 0.4, 1 + hb, 6, 13, 3); ctx.fill(); }
+  if (look.hairStyle === "ponytail") { ctx.beginPath(); ctx.ellipse(-9 - hairFlow, 5 + hb + Math.sin(T * 6) * 0.8, 2.6, 5, 0.5 + hairFlow * 0.2, 0, 6.283); ctx.fill(); }
+  if (look.hairStyle === "bun") { ctx.beginPath(); ctx.arc(-5.5, -2 + hb, 3.6, 0, 6.283); ctx.fill(); }
+  limb(-1, hip, 7, bl, 4, shade(legs, -0.2), "#151020");
+  limb(-1, sh, 7, ba, 3.2, shade(sleeve, -0.12), shade(look.skin, -0.08));
+  ctx.fillStyle = body; rr(-7, 9, 15, 14, 4); ctx.fill();
+  ctx.fillStyle = shade(body, -0.08); ctx.fillRect(-7, 19, 15, 4);
+  if (O.tie) { ctx.fillStyle = look.accent; ctx.beginPath(); ctx.moveTo(-1, 10); ctx.lineTo(2, 10); ctx.lineTo(1.6, 19); ctx.lineTo(0.5, 21); ctx.lineTo(-0.6, 19); ctx.fill(); }
+  if (O.vneck) { ctx.fillStyle = look.skin; ctx.beginPath(); ctx.moveTo(-2, 9.5); ctx.lineTo(3, 9.5); ctx.lineTo(0.5, 13.5); ctx.fill(); ctx.fillStyle = shade(body, 0.15); ctx.fillRect(-6, 15, 4, 3); }
+  if (O.gown) { ctx.strokeStyle = shade(body, -0.25); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-6, 13); ctx.lineTo(7, 13); ctx.moveTo(-6, 17); ctx.lineTo(7, 17); ctx.stroke(); }
   ctx.strokeStyle = "#8a93a6"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0.5, 11.5, 4.5, 0.25, 2.9); ctx.stroke();
   ctx.fillStyle = "#c9d0dc"; ctx.beginPath(); ctx.arc(4, 16.5 + Math.sin(ph) * (run ? 0.8 : 0), 1.8, 0, 6.283); ctx.fill();
-  limb(2, hip, 7, fl, 4, "#2b2440", "#151020");
-  const hb = run ? Math.sin(ph * 2) * 0.4 : 0;
-  ctx.fillStyle = "#e9bf98"; ctx.beginPath(); ctx.arc(1, 4 + hb, 6, 0, 6.283); ctx.fill();
-  ctx.fillStyle = "#3b2418"; ctx.beginPath(); ctx.arc(0, 2 + hb, 6.2, 3.3, 6.1); ctx.fill(); ctx.fillRect(-6, hb, 3, 6);
-  const hairFlow = clamp(-p.vy / 600, -1, 1) * 1.5 + (run ? Math.abs(sw) : 0);
-  ctx.beginPath(); ctx.moveTo(-5, -1 + hb); ctx.lineTo(-9 - hairFlow, 1 + hb); ctx.lineTo(-5, 3 + hb); ctx.fill();
+  limb(2, hip, 7, fl, 4, legs, "#151020");
+  // head
+  ctx.fillStyle = look.skin; ctx.beginPath(); ctx.arc(1, 4 + hb, 6, 0, 6.283); ctx.fill();
+  ctx.fillStyle = look.hair;
+  if (look.hairStyle === "buzz") { ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(0.5, 3 + hb, 6.1, 3.4, 5.9); ctx.fill(); ctx.globalAlpha = 1; }
+  else if (look.hairStyle === "curly") { for (let k = 0; k < 7; k++) { const a = 3.2 + k * 0.45; ctx.beginPath(); ctx.arc(0.5 + Math.cos(a) * 5.6, 3 + hb + Math.sin(a) * 5.6, 2.6, 0, 6.283); ctx.fill(); } }
+  else {
+    ctx.beginPath(); ctx.arc(0, 2 + hb, 6.2, 3.3, 6.1); ctx.fill(); ctx.fillRect(-6, hb, 3, 6);
+    if (look.hairStyle === "short") { ctx.beginPath(); ctx.moveTo(-5, -1 + hb); ctx.lineTo(-9 - hairFlow, 1 + hb); ctx.lineTo(-5, 3 + hb); ctx.fill(); }
+  }
+  // headwear
+  if (look.hat === "cap") { ctx.fillStyle = look.capCol; rr(-6, -3 + hb, 13, 5.5, 2.5); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.45)"; for (let k = 0; k < 4; k++) ctx.fillRect(-4 + k * 3, -1.5 + hb, 1, 1); }
+  if (look.hat === "band") { ctx.strokeStyle = look.capCol; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(0.6, 3.5 + hb, 6, 3.6, 5.8); ctx.stroke(); }
+  // face
   ctx.fillStyle = "#1a1220";
   if (p.hflash > 0.4) { ctx.fillRect(3.4, 2.6 + hb, 2.4, 2.4); ctx.fillRect(2.8, 7 + hb, 2, 1.6); }
   else ctx.fillRect(4, 3 + hb + (p.blink < 0 ? 1 : 0), 1.8, p.blink < 0 ? 0.6 : 2.2);
-  limb(1, sh, 7, fa, 3.2, "#f3f1ea", "#e9bf98");
+  if (look.glasses !== "none") {
+    ctx.strokeStyle = "#2a2a34"; ctx.lineWidth = 0.9;
+    if (look.glasses === "round") { ctx.beginPath(); ctx.arc(4.9, 4 + hb, 2.3, 0, 6.283); ctx.stroke(); }
+    else { ctx.strokeRect(2.6, 2.4 + hb, 4.6, 3.4); }
+    ctx.beginPath(); ctx.moveTo(2.6, 4 + hb); ctx.lineTo(-2.5, 3.5 + hb); ctx.stroke();
+  }
+  limb(1, sh, 7, fa, 3.2, sleeve, look.skin);
   ctx.restore();
 }
 function drawPlayer() {
@@ -1481,7 +1511,7 @@ function drawPlayer() {
   }
   const flick = p.inv > 0 && p.inv < 1.1 && Math.floor(p.inv * 14) % 2;
   if (flick) ctx.globalAlpha = 0.4;
-  drawSprite(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
+  drawSprite(() => drawHero(), p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
   ctx.globalAlpha = 1;
 }
 function drawEnemyAnimated(e) {
@@ -1758,4 +1788,4 @@ function frame(now) {
   render();
 }
 requestAnimationFrame(frame);
-renderMap(); renderStoreNote(); initCaps();
+setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); }, 0);  // after every script has loaded

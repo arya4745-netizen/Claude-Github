@@ -32,6 +32,9 @@ Opening a realm's briefing asks Claude to write a new set of questions from that
 - **True-or-false lanes** inside every chase: a statement appears, and you climb to the high road for TRUE or stay low for FALSE. The wrong lane is a dead end while the chase closes in.
 - **Timed gates** (longer with Wisdom), plus timed hazards (pulse spikes, falling rocks) and parrying: dash into a guardian's shot to reflect it and stagger the guardian.
 
+## Characters
+Create as many registrars as you like: a name, a starting specialty (Generalist, Theatre, Birth suite, Clinic or Ward registrar, each with its own stat bonus), and a look (skin tone, hair colour and style, white coat, scrubs or theatre gown with colour, cape, glasses, headwear), with a live animated preview and a Randomise button. Switch between registrars, change a look later, or delete one (tap twice). Each registrar has their own level, stats and equipment; stars, pearls and the review schedule are shared because they track your learning. An older save becomes "Registrar".
+
 ## Character development
 XP comes mostly from learning: right answers, solved rooms, pearls, guardian recall, true wisps, and the Review Shrine. Each level gives a stat point:
 - **Vitality**: +1 heart per 2 points. **Agility**: run speed, dash speed and recovery. **Might**: pound radius, stagger length, and at 5+ a full-marks recall strike hits twice. **Wisdom**: longer gate timers and more Insight.

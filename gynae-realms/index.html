@@ -160,6 +160,38 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: c
 .invrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 6px; }
 .spinner { width: 36px; height: 36px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--brass); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.creator { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; align-items: start; }
+.creator .pv { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; }
+canvas.preview { width: 200px; height: 240px; border-radius: 12px; border: 1px solid var(--line); display: block; }
+.copts { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.copts input { font: inherit; font-size: 17px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; width: 100%; }
+.copts input:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.lbl { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); }
+.specs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.spec { text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.spec span { font-size: 12px; color: var(--muted); }
+.spec.on { border-color: var(--brass); background: #3a2f4e; }
+.looks { display: flex; flex-direction: column; gap: 8px; }
+.optrow { display: flex; flex-direction: column; gap: 4px; }
+.swrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.sw { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
+.sw.txt { width: auto; height: auto; border-radius: 999px; padding: 4px 12px; background: var(--panel-2); font-size: 13px; }
+.sw.on { border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass); }
+.sw.txt.on { background: #3a2f4e; color: var(--ink); }
+.roster { display: flex; flex-direction: column; gap: 8px; }
+.rosterrow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.rosterrow.on { border-color: var(--brass); }
+.rinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+canvas.mini { width: 64px; height: 76px; border-radius: 8px; display: block; }
+canvas.mini.big { width: 84px; height: 100px; }
+.sheethead { display: flex; gap: 14px; align-items: center; }
+@media (max-width: 560px) {
+  .creator { grid-template-columns: 1fr; }
+  .creator .pv { position: static; flex-direction: row; align-items: end; }
+  canvas.preview { width: 140px; height: 168px; }
+  .rosterrow { grid-template-columns: 56px minmax(0, 1fr); }
+  .rosterrow .actions { grid-column: 1 / -1; }
+}
 .opt.cleared { opacity: .35; text-decoration: line-through; }
 .pips { letter-spacing: 1px; color: #8fd3ff; }
 .pips i { font-style: normal; color: #4a4f6a; }
@@ -720,11 +752,14 @@ function mergeInto(src) {
   if (src.gen) { P.gen = Object.assign(P.gen || {}, src.gen); for (const [k, v] of Object.entries(src.gen)) if (!QB[k]) QB[k] = v; }
   if (src.seen) { P.seen = P.seen || {}; for (const [k, v] of Object.entries(src.seen)) if (!P.seen[k] || v.length > P.seen[k].length) P.seen[k] = v; }
   const rank = c => c ? c.level * 1e6 + c.xp + c.items.length : -1;
-  if (src.char && rank(src.char) > rank(P.char)) P.char = src.char;
+  if (src.char && !src.chars && !P.chars) P.char = src.char;
+  if (src.chars) { P.chars = P.chars || []; for (const c of src.chars) { const i = P.chars.findIndex(x => x.id === c.id); if (i < 0) P.chars.push(c); else if (rank(c) > rank(P.chars[i])) P.chars[i] = c; } }
+  if (src.deleted) { P.deleted = Array.from(new Set([...(P.deleted || []), ...src.deleted])); P.chars = (P.chars || []).filter(c => !P.deleted.includes(c.id)); }
+  if (src.activeChar && (!P.activeChar || (src.updated || 0) >= (P.updated || 0))) P.activeChar = src.activeChar;
 }
 function save() {
   P.updated = Date.now();
-  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, gen: P.gen || {}, seen: P.seen || {}, updated: P.updated };
+  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, chars: P.chars || [], activeChar: P.activeChar || null, deleted: P.deleted || [], gen: P.gen || {}, seen: P.seen || {}, updated: P.updated };
   lsWrite(body);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -736,7 +771,7 @@ const CAP = {};
 async function initCaps() {
   const local = lsRead(); mergeInto(local); if (local) storeMode = "local";
   const C = window.claude;
-  if (!C || !C.use) { renderStoreNote(); renderMap(); return; }
+  if (!C || !C.use) { renderStoreNote(); renderMap(); renderLevelChip(); return; }
   C.use("sample").then(s => { CAP.sample = s; }).catch(() => { CAP.sample = null; });
   C.use("dictation").then(d => { CAP.dict = d; if (d) wireDictation(d); }).catch(() => { CAP.dict = null; });
   try {
@@ -1312,7 +1347,7 @@ function updateNear() {
 $("nearBtn").addEventListener("click", () => { if (nearSign) openSign(nearSign); });
 $("pauseBtn").addEventListener("click", e => { e.currentTarget.blur(); openPause(); });
 $("shrineBtn").addEventListener("click", runShrine);
-$("charBtn").addEventListener("click", () => openCharacter(() => { closeModal(); renderMap(); renderLevelChip(); }));
+$("charBtn").addEventListener("click", () => { const back = () => { closeModal(); renderMap(); renderLevelChip(); }; if (hasChars()) openCharacter(back); else openCreator({ after: back }); });
 
 /* Leap of Judgement card */
 let leapShown = null;
@@ -2088,29 +2123,34 @@ function limb(x, y, len, ang, w, col, end) {
   if (end) { ctx.fillStyle = end; ctx.beginPath(); ctx.arc(0, len + 0.5, w * 0.62, 0, 6.283); ctx.fill(); }
   ctx.restore();
 }
-function drawCape(p) {
+function drawCape(p, look) {
   const c = p.cape; if (!c) return;
-  ctx.fillStyle = "#a8324a";
+  look = look || heroLook();
+  ctx.fillStyle = look.cape;
   ctx.beginPath();
   for (let i = 0; i < c.length; i++) { const w = 3.6 - i * 0.35; ctx.lineTo(c[i].x, c[i].y - w); }
   for (let i = c.length - 1; i >= 0; i--) { const w = 3.6 - i * 0.35; ctx.lineTo(c[i].x, c[i].y + w); }
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = "#7a2034"; ctx.lineWidth = 1; ctx.beginPath(); c.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
+  ctx.strokeStyle = shade(look.cape, -0.3); ctx.lineWidth = 1; ctx.beginPath(); c.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
 }
-function drawHero() {
-  const p = G.player;
-  drawCape(p);
+/* Draws the registrar. p: body state (position, velocity, pose); look: appearance; time: animation clock. */
+function drawHero(p, look, time) {
+  p = p || G.player; look = look || heroLook();
+  const T = time != null ? time : G.time;
+  drawCape(p, look);
   const run = p.ground && Math.abs(p.vx) > 20, ph = p.anim * 0.075, sw = Math.sin(ph);
-  const bob = run ? -Math.abs(Math.cos(ph)) * 1.8 : p.ground ? Math.sin(G.time * 3) * 0.5 : 0;
+  const bob = run ? -Math.abs(Math.cos(ph)) * 1.8 : p.ground ? Math.sin(T * 3) * 0.5 : 0;
   let sx = 1 - p.sq * 0.7, sy = 1 + p.sq, lean = 0;
-  // limb angles (radians, positive = forward) for: front leg, back leg, front arm, back arm
-  let fl = 0, bl = 0, fa = 0.08 * Math.sin(G.time * 3), ba = -0.08 * Math.sin(G.time * 3);
+  let fl = 0, bl = 0, fa = 0.08 * Math.sin(T * 3), ba = -0.08 * Math.sin(T * 3);
   if (p.dash > 0) { fl = -0.7; bl = -1.1; fa = -1.4; ba = -1.1; lean = 0.32; sx = 1.18; sy = 0.86; }
   else if (p.pound) { fl = 1.5; bl = 1.3; fa = 2.7; ba = 2.5; }
   else if (p.wall) { fl = 0.55; bl = 0.15; fa = 2.0; ba = 1.5; lean = -0.1; }
   else if (!p.ground && p.vy < 0) { fl = 0.95; bl = -0.25; fa = 2.5; ba = -0.7; }
-  else if (!p.ground) { fl = 0.3; bl = -0.4; fa = 2.1 + Math.sin(G.time * 18) * 0.2; ba = 1.8 - Math.sin(G.time * 18) * 0.2; }
+  else if (!p.ground) { fl = 0.3; bl = -0.4; fa = 2.1 + Math.sin(T * 18) * 0.2; ba = 1.8 - Math.sin(T * 18) * 0.2; }
   else if (run) { fl = sw * 0.95; bl = -sw * 0.95; fa = -sw * 0.85; ba = sw * 0.85; lean = clamp(Math.abs(p.vx) / 205, 0, 1) * 0.12; }
+  const O = OUTFITS[look.outfit] || OUTFITS.coat;
+  const body = O.body === "scrub" ? look.scrub : O.body, sleeve = O.sleeve === "scrub" ? look.scrub : O.sleeve === "skin" ? look.skin : O.sleeve;
+  const legs = O.legs === "scrub" ? shade(look.scrub, -0.15) : O.legs;
   ctx.save();
   ctx.translate(p.x + p.w / 2, p.y + p.h);
   ctx.scale(p.face * sx, sy);
@@ -2118,24 +2158,46 @@ function drawHero() {
   if (p.flip) { ctx.translate(0, -14); ctx.rotate(p.flip * Math.PI); ctx.translate(0, 14); }
   ctx.rotate(lean);
   ctx.translate(0, -p.h + bob);
-  const hip = 21, sh = 12;
-  limb(-1, hip, 7, bl, 4, "#221c34", "#151020");
-  limb(-1, sh, 7, ba, 3.2, "#d9d4c8", "#e2b48e");
-  ctx.fillStyle = "#f3f1ea"; rr(-7, 9, 15, 14, 4); ctx.fill();
-  ctx.fillStyle = "#e4e0d6"; ctx.fillRect(-7, 19, 15, 4);
-  ctx.fillStyle = "#5b7bd6"; ctx.beginPath(); ctx.moveTo(-1, 10); ctx.lineTo(2, 10); ctx.lineTo(1.6, 19); ctx.lineTo(0.5, 21); ctx.lineTo(-0.6, 19); ctx.fill();
+  const hip = 21, sh = 12, hb = run ? Math.sin(ph * 2) * 0.4 : 0;
+  const hairFlow = clamp(-p.vy / 600, -1, 1) * 1.5 + (run ? Math.abs(sw) : 0);
+  // hair behind the head
+  ctx.fillStyle = look.hair;
+  if (look.hairStyle === "long") { rr(-8 - hairFlow * 0.4, 1 + hb, 6, 13, 3); ctx.fill(); }
+  if (look.hairStyle === "ponytail") { ctx.beginPath(); ctx.ellipse(-9 - hairFlow, 5 + hb + Math.sin(T * 6) * 0.8, 2.6, 5, 0.5 + hairFlow * 0.2, 0, 6.283); ctx.fill(); }
+  if (look.hairStyle === "bun") { ctx.beginPath(); ctx.arc(-5.5, -2 + hb, 3.6, 0, 6.283); ctx.fill(); }
+  limb(-1, hip, 7, bl, 4, shade(legs, -0.2), "#151020");
+  limb(-1, sh, 7, ba, 3.2, shade(sleeve, -0.12), shade(look.skin, -0.08));
+  ctx.fillStyle = body; rr(-7, 9, 15, 14, 4); ctx.fill();
+  ctx.fillStyle = shade(body, -0.08); ctx.fillRect(-7, 19, 15, 4);
+  if (O.tie) { ctx.fillStyle = look.accent; ctx.beginPath(); ctx.moveTo(-1, 10); ctx.lineTo(2, 10); ctx.lineTo(1.6, 19); ctx.lineTo(0.5, 21); ctx.lineTo(-0.6, 19); ctx.fill(); }
+  if (O.vneck) { ctx.fillStyle = look.skin; ctx.beginPath(); ctx.moveTo(-2, 9.5); ctx.lineTo(3, 9.5); ctx.lineTo(0.5, 13.5); ctx.fill(); ctx.fillStyle = shade(body, 0.15); ctx.fillRect(-6, 15, 4, 3); }
+  if (O.gown) { ctx.strokeStyle = shade(body, -0.25); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-6, 13); ctx.lineTo(7, 13); ctx.moveTo(-6, 17); ctx.lineTo(7, 17); ctx.stroke(); }
   ctx.strokeStyle = "#8a93a6"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0.5, 11.5, 4.5, 0.25, 2.9); ctx.stroke();
   ctx.fillStyle = "#c9d0dc"; ctx.beginPath(); ctx.arc(4, 16.5 + Math.sin(ph) * (run ? 0.8 : 0), 1.8, 0, 6.283); ctx.fill();
-  limb(2, hip, 7, fl, 4, "#2b2440", "#151020");
-  const hb = run ? Math.sin(ph * 2) * 0.4 : 0;
-  ctx.fillStyle = "#e9bf98"; ctx.beginPath(); ctx.arc(1, 4 + hb, 6, 0, 6.283); ctx.fill();
-  ctx.fillStyle = "#3b2418"; ctx.beginPath(); ctx.arc(0, 2 + hb, 6.2, 3.3, 6.1); ctx.fill(); ctx.fillRect(-6, hb, 3, 6);
-  const hairFlow = clamp(-p.vy / 600, -1, 1) * 1.5 + (run ? Math.abs(sw) : 0);
-  ctx.beginPath(); ctx.moveTo(-5, -1 + hb); ctx.lineTo(-9 - hairFlow, 1 + hb); ctx.lineTo(-5, 3 + hb); ctx.fill();
+  limb(2, hip, 7, fl, 4, legs, "#151020");
+  // head
+  ctx.fillStyle = look.skin; ctx.beginPath(); ctx.arc(1, 4 + hb, 6, 0, 6.283); ctx.fill();
+  ctx.fillStyle = look.hair;
+  if (look.hairStyle === "buzz") { ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(0.5, 3 + hb, 6.1, 3.4, 5.9); ctx.fill(); ctx.globalAlpha = 1; }
+  else if (look.hairStyle === "curly") { for (let k = 0; k < 7; k++) { const a = 3.2 + k * 0.45; ctx.beginPath(); ctx.arc(0.5 + Math.cos(a) * 5.6, 3 + hb + Math.sin(a) * 5.6, 2.6, 0, 6.283); ctx.fill(); } }
+  else {
+    ctx.beginPath(); ctx.arc(0, 2 + hb, 6.2, 3.3, 6.1); ctx.fill(); ctx.fillRect(-6, hb, 3, 6);
+    if (look.hairStyle === "short") { ctx.beginPath(); ctx.moveTo(-5, -1 + hb); ctx.lineTo(-9 - hairFlow, 1 + hb); ctx.lineTo(-5, 3 + hb); ctx.fill(); }
+  }
+  // headwear
+  if (look.hat === "cap") { ctx.fillStyle = look.capCol; rr(-6, -3 + hb, 13, 5.5, 2.5); ctx.fill(); ctx.fillStyle = "rgba(255,255,255,0.45)"; for (let k = 0; k < 4; k++) ctx.fillRect(-4 + k * 3, -1.5 + hb, 1, 1); }
+  if (look.hat === "band") { ctx.strokeStyle = look.capCol; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(0.6, 3.5 + hb, 6, 3.6, 5.8); ctx.stroke(); }
+  // face
   ctx.fillStyle = "#1a1220";
   if (p.hflash > 0.4) { ctx.fillRect(3.4, 2.6 + hb, 2.4, 2.4); ctx.fillRect(2.8, 7 + hb, 2, 1.6); }
   else ctx.fillRect(4, 3 + hb + (p.blink < 0 ? 1 : 0), 1.8, p.blink < 0 ? 0.6 : 2.2);
-  limb(1, sh, 7, fa, 3.2, "#f3f1ea", "#e9bf98");
+  if (look.glasses !== "none") {
+    ctx.strokeStyle = "#2a2a34"; ctx.lineWidth = 0.9;
+    if (look.glasses === "round") { ctx.beginPath(); ctx.arc(4.9, 4 + hb, 2.3, 0, 6.283); ctx.stroke(); }
+    else { ctx.strokeRect(2.6, 2.4 + hb, 4.6, 3.4); }
+    ctx.beginPath(); ctx.moveTo(2.6, 4 + hb); ctx.lineTo(-2.5, 3.5 + hb); ctx.stroke();
+  }
+  limb(1, sh, 7, fa, 3.2, sleeve, look.skin);
   ctx.restore();
 }
 function drawPlayer() {
@@ -2153,7 +2215,7 @@ function drawPlayer() {
   }
   const flick = p.inv > 0 && p.inv < 1.1 && Math.floor(p.inv * 14) % 2;
   if (flick) ctx.globalAlpha = 0.4;
-  drawSprite(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
+  drawSprite(() => drawHero(), p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
   ctx.globalAlpha = 1;
 }
 function drawEnemyAnimated(e) {
@@ -2430,7 +2492,7 @@ function frame(now) {
   render();
 }
 requestAnimationFrame(frame);
-renderMap(); renderStoreNote(); initCaps();
+setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); }, 0);  // after every script has loaded
 
 /* ================= puzzle rooms =================
    One single-screen room per realm, placed after the chase. The camera locks and zooms so the whole room is visible.
@@ -3424,7 +3486,7 @@ function drawForks() {
 }
 
 /* ================= character progression: XP from learning, stats, equipment, riddle chests, fact wisps =================
-   Loaded last. Character data lives in P.char and is saved with the rest of your progress. */
+   Character data lives in P.chars (one entry per registrar; P.activeChar is the one playing) and is saved with the rest of your progress. */
 
 const STATS = [
   ["vit", "Vitality", "More hearts: +1 heart for every 2 points."],
@@ -3466,10 +3528,161 @@ const ITEMS = {
 };
 const itemFor = (realm, src) => Object.keys(ITEMS).find(id => ITEMS[id].realm === realm && ITEMS[id].src === src);
 
-function charData() {
-  if (!P.char) P.char = { xp: 0, level: 1, points: 3, stats: { vit: 2, agi: 0, mig: 0, wis: 0 }, items: [], equip: {} };
-  return P.char;
+/* ---------- characters: roster, appearance, specialty ---------- */
+const OUTFITS = {
+  coat: { body: "#f3f1ea", sleeve: "#f3f1ea", legs: "#2b2440", tie: true },
+  scrubs: { body: "scrub", sleeve: "skin", legs: "scrub", vneck: true },
+  gown: { body: "scrub", sleeve: "scrub", legs: "#2b3440", gown: true }
+};
+const LOOK_OPTS = {
+  skin: ["#f6d4b8", "#e9bf98", "#d19a6a", "#a86f45", "#7a4a2a", "#4e2e1b"],
+  hair: ["#1e1410", "#3b2418", "#7a4a24", "#c48a3a", "#e8d08a", "#b8b8c0", "#a83a2a", "#5a6ad0"],
+  hairStyle: [["short", "Short"], ["long", "Long"], ["ponytail", "Ponytail"], ["bun", "Bun"], ["curly", "Curly"], ["buzz", "Cropped"]],
+  outfit: [["coat", "White coat"], ["scrubs", "Scrubs"], ["gown", "Theatre gown"]],
+  scrub: ["#3a7ab0", "#2a8a7a", "#6a4a9a", "#a83a5a", "#4a5a6a", "#5aa8a0"],
+  accent: ["#5b7bd6", "#c0392b", "#2a8a5a", "#e0b25c", "#8a4ab0"],
+  cape: ["#a8324a", "#2f6fa8", "#3a8a5a", "#6a3a9a", "#c98a2a", "#2a2a3a", "#e8e4da"],
+  glasses: [["none", "None"], ["round", "Round"], ["square", "Square"]],
+  hat: [["none", "None"], ["cap", "Theatre cap"], ["band", "Headband"]],
+  capCol: ["#3a7ab0", "#e8e4da", "#c0392b", "#e0b25c", "#2a8a5a"]
+};
+const DEFAULT_LOOK = { skin: "#e9bf98", hair: "#3b2418", hairStyle: "short", outfit: "coat", scrub: "#3a7ab0", accent: "#5b7bd6", cape: "#a8324a", glasses: "none", hat: "none", capCol: "#3a7ab0" };
+const SPECIALTIES = [
+  ["gen", "Generalist", "Balanced: +1 Vitality, +1 Wisdom.", { vit: 1, wis: 1 }],
+  ["theatre", "Theatre registrar", "Steady under pressure: +2 Might.", { mig: 2 }],
+  ["birth", "Birth suite registrar", "Always running: +2 Agility.", { agi: 2 }],
+  ["clinic", "Clinic registrar", "Reads everything: +2 Wisdom.", { wis: 2 }],
+  ["ward", "Ward registrar", "Hard to knock down: +2 Vitality.", { vit: 2 }]
+];
+const specOf = id => SPECIALTIES.find(s => s[0] === id) || SPECIALTIES[0];
+function randomLook() { const pick = a => a[Math.floor(Math.random() * a.length)]; const o = {}; for (const [k, v] of Object.entries(LOOK_OPTS)) o[k] = Array.isArray(v[0]) ? pick(v)[0] : pick(v); return o; }
+
+const TEMP_CHAR = { id: "temp", name: "Registrar", look: { ...DEFAULT_LOOK }, spec: "gen", xp: 0, level: 1, points: 3, stats: { vit: 2, agi: 0, mig: 0, wis: 0 }, items: [], equip: {} };
+function migrateChar() {
+  P.chars = P.chars || [];
+  if (P.char && !P.chars.length) { P.chars.push({ ...P.char, id: "c0", name: "Registrar", look: { ...DEFAULT_LOOK }, spec: "gen" }); P.activeChar = "c0"; }
+  delete P.char;
 }
+function hasChars() { migrateChar(); return P.chars.length > 0; }
+function charData() {
+  migrateChar();
+  const c = P.chars.find(x => x.id === P.activeChar) || P.chars[0];
+  if (!c) return TEMP_CHAR;
+  if (P.activeChar !== c.id) P.activeChar = c.id;
+  c.look = { ...DEFAULT_LOOK, ...(c.look || {}) };
+  return c;
+}
+function heroLook() { return charData().look; }
+function newCharacter(name, look, spec) {
+  const base = { vit: 2, agi: 0, mig: 0, wis: 0 };
+  for (const [k, v] of Object.entries(specOf(spec)[3])) base[k] += v;
+  const c = { id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, look, spec, xp: 0, level: 1, points: 3, stats: base, items: [], equip: {}, created: Date.now() };
+  migrateChar(); P.chars.push(c); P.activeChar = c.id; save(); renderLevelChip();
+  return c;
+}
+
+/* animated preview of a look */
+function heroPreview(cv, getLook) {
+  const pc = cv.getContext("2d"), t0 = performance.now();
+  const p = { x: -9, y: -28, w: 18, h: 28, face: 1, ground: true, vx: 0, vy: 0, sq: 0, pound: 0, dash: 0, wall: 0, flip: 0, blink: 2, hflash: 0, spin: 0, anim: 0, cape: null };
+  function frame(now) {
+    if (!cv.isConnected) return;
+    const t = (now - t0) / 1000, running = (t % 6) > 3, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    pc.setTransform(1, 0, 0, 1, 0, 0);
+    const g = pc.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#2b2140"); g.addColorStop(1, "#1a1424"); pc.fillStyle = g; pc.fillRect(0, 0, W, H);
+    pc.fillStyle = "#3a3050"; pc.fillRect(0, H * 0.84, W, H * 0.16); pc.fillStyle = "#8f7fd6"; pc.fillRect(0, H * 0.84, W, 3 * dpr);
+    const S = H / 46;
+    pc.setTransform(S, 0, 0, S, W / 2, H * 0.84);
+    p.vx = running ? 150 : 0; p.anim = running ? t * 150 : 0; p.blink = (t % 3.1) < 0.12 ? -1 : 1;
+    p.cape = Array.from({ length: 7 }, (_, i) => ({ x: -3 - i * (running ? 3.1 : 0.9), y: -17 + i * (running ? 0.9 : 2.5) + Math.sin(t * 7 + i * 0.9) * i * (running ? 0.35 : 0.12) }));
+    const main = ctx; ctx = pc;
+    try { drawHero(p, { ...DEFAULT_LOOK, ...getLook() }, t); } finally { ctx = main; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* the creator: new character, or edit an existing look */
+function openCreator(opts) {
+  opts = opts || {};
+  const editing = opts.edit ? charData() : null;
+  const st = { name: editing ? editing.name : "", spec: editing ? editing.spec : "gen", look: { ...(editing ? editing.look : DEFAULT_LOOK) } };
+  let built = false;
+  const build = () => { const sc = built ? $("panel").scrollTop : 0; showBuilt(); if (built) { $("panel").classList.remove("in"); $("panel").scrollTop = sc; } built = true; };
+  const showBuilt = () => showModal(p => {
+    const cv = el("canvas", { class: "preview", "aria-label": "Preview of your registrar" });
+    const nameIn = el("input", { id: "charName", type: "text", maxlength: "20", placeholder: "Dr …", value: st.name, autocomplete: "off" });
+    nameIn.addEventListener("input", () => { st.name = nameIn.value; });
+    const row = (title, key, list) => {
+      const box = el("div", { class: "swrow" });
+      for (const v of list) {
+        const val = Array.isArray(v) ? v[0] : v, txt = Array.isArray(v) ? v[1] : null, on = st.look[key] === val;
+        const b = el("button", { type: "button", class: "sw" + (txt ? " txt" : "") + (on ? " on" : ""), "aria-pressed": String(on), "aria-label": title + " " + (txt || val), style: txt ? null : "background:" + val }, txt);
+        b.addEventListener("click", () => { st.look[key] = val; st.name = nameIn.value; build(); });
+        box.append(b);
+      }
+      return el("div", { class: "optrow" }, el("span", { class: "lbl", text: title }), box);
+    };
+    const specs = el("div", { class: "specs" });
+    if (!editing) for (const [id, name, desc] of SPECIALTIES) {
+      const b = el("button", { type: "button", class: "spec" + (st.spec === id ? " on" : ""), "aria-pressed": String(st.spec === id) }, el("b", { text: name }), el("span", { text: desc }));
+      b.addEventListener("click", () => { st.spec = id; st.name = nameIn.value; build(); });
+      specs.append(b);
+    }
+    const looks = el("div", { class: "looks" },
+      row("Skin", "skin", LOOK_OPTS.skin), row("Hair", "hair", LOOK_OPTS.hair), row("Hairstyle", "hairStyle", LOOK_OPTS.hairStyle),
+      row("Outfit", "outfit", LOOK_OPTS.outfit), st.look.outfit !== "coat" ? row("Outfit colour", "scrub", LOOK_OPTS.scrub) : row("Tie", "accent", LOOK_OPTS.accent),
+      row("Cape", "cape", LOOK_OPTS.cape), row("Glasses", "glasses", LOOK_OPTS.glasses), row("Headwear", "hat", LOOK_OPTS.hat),
+      st.look.hat !== "none" ? row("Headwear colour", "capCol", LOOK_OPTS.capCol) : null);
+    const err = el("p", { class: "muted small", hidden: "" });
+    const done = el("button", { type: "button", class: "btn primary", text: editing ? "Save look" : "Create registrar", onclick: () => {
+      const name = (nameIn.value || "").trim();
+      if (!name) { err.hidden = false; err.textContent = "Give your registrar a name."; nameIn.focus(); return; }
+      if (editing) { editing.name = name; editing.look = { ...st.look }; save(); renderLevelChip(); }
+      else { newCharacter(name, { ...st.look }, st.spec); toast("Welcome, " + name + ".", "good"); }
+      closeModal(); if (opts.after) opts.after();
+    } });
+    p.append(el("span", { class: "kicker", text: editing ? "Character · change look" : "New character" }), el("h2", { text: editing ? "Change " + editing.name + "'s look" : "Create your registrar" }),
+      el("div", { class: "creator" }, el("div", { class: "pv" }, cv, el("button", { type: "button", class: "btn quiet", text: "Randomise look", onclick: () => { st.look = randomLook(); st.name = nameIn.value; build(); } })),
+        el("div", { class: "copts" }, el("label", { class: "lbl", for: "charName", text: "Name" }), nameIn,
+          editing ? null : el("span", { class: "lbl", text: "Specialty (sets your starting stats)" }), editing ? null : specs, looks)),
+      err, el("div", { class: "actions" }, done, el("button", { type: "button", class: "btn quiet", text: "Cancel", onclick: () => { closeModal(); if (opts.cancel) opts.cancel(); } })));
+    heroPreview(cv, () => st.look);
+    modalKeys = e => { if (e.key === "Enter" && e.target === nameIn) { done.click(); return true; } return false; };
+  });
+  build();
+}
+
+/* the roster: switch, create, change look, delete */
+function openRoster(back) {
+  migrateChar();
+  showModal(p => {
+    const list = el("div", { class: "roster" });
+    for (const c of P.chars) {
+      const cv = el("canvas", { class: "mini", "aria-hidden": "true" });
+      const active = c.id === P.activeChar;
+      const del = el("button", { type: "button", class: "btn quiet", text: "Delete" });
+      del.addEventListener("click", () => {
+        if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Tap again to delete " + c.name; return; }
+        P.deleted = [...(P.deleted || []), c.id]; P.chars = P.chars.filter(x => x.id !== c.id);
+        if (P.activeChar === c.id) P.activeChar = P.chars[0] ? P.chars[0].id : null;
+        save(); renderLevelChip(); renderMap(); openRoster(back);
+      });
+      list.append(el("div", { class: "rosterrow" + (active ? " on" : "") }, cv,
+        el("div", { class: "rinfo" }, el("b", { text: c.name + (active ? " · playing" : "") }), el("span", { class: "muted small", text: "Level " + c.level + " · " + specOf(c.spec)[1] + " · " + c.items.length + " of " + Object.keys(ITEMS).length + " items" })),
+        el("div", { class: "actions" }, active ? null : el("button", { type: "button", class: "btn", text: "Play as " + c.name, onclick: () => { P.activeChar = c.id; save(); renderLevelChip(); renderMap(); openRoster(back); } }), del)));
+      heroPreview(cv, () => c.look || DEFAULT_LOOK);
+    }
+    if (!P.chars.length) list.append(el("p", { class: "muted", text: "No characters yet." }));
+    p.append(el("span", { class: "kicker", text: "Characters" }), el("h2", { text: "Your registrars" }),
+      el("p", { class: "muted small", text: "Each registrar has their own level, stats and equipment. Stars, pearls and your review schedule are shared, because they track your learning." }), list,
+      el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "New character", onclick: () => openCreator({ after: () => openRoster(back), cancel: () => openRoster(back) }) }),
+        el("button", { type: "button", class: "btn quiet", text: "Done", onclick: () => back ? back() : closeModal() })));
+  });
+}
+
 const xpNeed = lv => 120 + 80 * (lv - 1);
 function totalStats() {
   const c = charData(), s = { ...c.stats };
@@ -3510,7 +3723,7 @@ function gainXP(n, x, y) {
 function renderLevelChip() {
   const c = charData();
   const chip = $("levelChip"); if (chip) { chip.querySelector("b").textContent = "Lv " + c.level + (c.points ? " +" + c.points : ""); chip.querySelector("i").style.width = (c.xp / xpNeed(c.level) * 100) + "%"; chip.classList.toggle("hot", c.points > 0); }
-  const mb = $("charBtn"); if (mb) mb.textContent = "Character · Lv " + c.level + (c.points ? " · " + c.points + " point" + (c.points > 1 ? "s" : "") + " to spend" : "");
+  const mb = $("charBtn"); if (mb) mb.textContent = hasChars() ? c.name + " · Lv " + c.level + (c.points ? " · " + c.points + " point" + (c.points > 1 ? "s" : "") + " to spend" : "") : "Create your registrar";
 }
 
 /* equipment */
@@ -3559,12 +3772,16 @@ function openCharacter(back) {
         el("button", { type: "button", class: "btn" + (on ? " quiet" : ""), text: on ? "Unequip" : "Equip", onclick: () => { if (on) delete c.equip[it.slot]; else c.equip[it.slot] = id; save(); applyDerived(); openCharacter(back); } })));
     }
     const found = owned.length, total = Object.keys(ITEMS).length;
-    p.append(el("span", { class: "kicker", text: "Character" }), el("h2", { text: "Registrar · Level " + c.level }), xpbar,
+    const head = el("div", { class: "sheethead" }, el("canvas", { class: "mini big", "aria-hidden": "true" }), el("div", {}, el("span", { class: "kicker", text: "Character · " + specOf(c.spec)[1] }), el("h2", { text: c.name + " · Level " + c.level })));
+    p.append(head, el("div", { class: "actions" },
+        el("button", { type: "button", class: "btn", text: "Change look", onclick: () => openCreator({ edit: true, after: () => openCharacter(back), cancel: () => openCharacter(back) }) }),
+        G ? null : el("button", { type: "button", class: "btn", text: "Switch or new character", onclick: () => openRoster(() => openCharacter(back)) })), xpbar,
       el("p", { class: "muted small", text: "XP comes mostly from learning: right answers, solved rooms, pearls, guardian recall, true fact wisps, and the Review Shrine." }),
       el("h3", { text: c.points ? c.points + " stat point" + (c.points > 1 ? "s" : "") + " to spend" : "Stats" }), rows, eff,
       el("h3", { text: "Equipped" }), slots,
       el("h3", { text: "Collection · " + found + " of " + total }), inv,
       el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => back ? back() : closeModal() })));
+    heroPreview(head.querySelector("canvas"), () => c.look);
   });
 }
 
@@ -3772,6 +3989,7 @@ function buildRun(L, pack) {
 /* Starting a realm: wait for fresh questions (or skip), then build the run. */
 async function beginRealm(L) {
   closeModal();
+  if (!hasChars()) { openCreator({ after: () => beginRealm(L) }); return; }
   let pack = null, skipped = false;
   const go = pk => { if (GEN[L.id]) GEN[L.id].status = "used"; L.run = buildRun(L, pk); startLevel(L); if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500); };
   if (CAP.sample) {

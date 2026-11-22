@@ -1,5 +1,5 @@
 /* ================= character progression: XP from learning, stats, equipment, riddle chests, fact wisps =================
-   Loaded last. Character data lives in P.char and is saved with the rest of your progress. */
+   Character data lives in P.chars (one entry per registrar; P.activeChar is the one playing) and is saved with the rest of your progress. */
 
 const STATS = [
   ["vit", "Vitality", "More hearts: +1 heart for every 2 points."],
@@ -41,10 +41,161 @@ const ITEMS = {
 };
 const itemFor = (realm, src) => Object.keys(ITEMS).find(id => ITEMS[id].realm === realm && ITEMS[id].src === src);
 
-function charData() {
-  if (!P.char) P.char = { xp: 0, level: 1, points: 3, stats: { vit: 2, agi: 0, mig: 0, wis: 0 }, items: [], equip: {} };
-  return P.char;
+/* ---------- characters: roster, appearance, specialty ---------- */
+const OUTFITS = {
+  coat: { body: "#f3f1ea", sleeve: "#f3f1ea", legs: "#2b2440", tie: true },
+  scrubs: { body: "scrub", sleeve: "skin", legs: "scrub", vneck: true },
+  gown: { body: "scrub", sleeve: "scrub", legs: "#2b3440", gown: true }
+};
+const LOOK_OPTS = {
+  skin: ["#f6d4b8", "#e9bf98", "#d19a6a", "#a86f45", "#7a4a2a", "#4e2e1b"],
+  hair: ["#1e1410", "#3b2418", "#7a4a24", "#c48a3a", "#e8d08a", "#b8b8c0", "#a83a2a", "#5a6ad0"],
+  hairStyle: [["short", "Short"], ["long", "Long"], ["ponytail", "Ponytail"], ["bun", "Bun"], ["curly", "Curly"], ["buzz", "Cropped"]],
+  outfit: [["coat", "White coat"], ["scrubs", "Scrubs"], ["gown", "Theatre gown"]],
+  scrub: ["#3a7ab0", "#2a8a7a", "#6a4a9a", "#a83a5a", "#4a5a6a", "#5aa8a0"],
+  accent: ["#5b7bd6", "#c0392b", "#2a8a5a", "#e0b25c", "#8a4ab0"],
+  cape: ["#a8324a", "#2f6fa8", "#3a8a5a", "#6a3a9a", "#c98a2a", "#2a2a3a", "#e8e4da"],
+  glasses: [["none", "None"], ["round", "Round"], ["square", "Square"]],
+  hat: [["none", "None"], ["cap", "Theatre cap"], ["band", "Headband"]],
+  capCol: ["#3a7ab0", "#e8e4da", "#c0392b", "#e0b25c", "#2a8a5a"]
+};
+const DEFAULT_LOOK = { skin: "#e9bf98", hair: "#3b2418", hairStyle: "short", outfit: "coat", scrub: "#3a7ab0", accent: "#5b7bd6", cape: "#a8324a", glasses: "none", hat: "none", capCol: "#3a7ab0" };
+const SPECIALTIES = [
+  ["gen", "Generalist", "Balanced: +1 Vitality, +1 Wisdom.", { vit: 1, wis: 1 }],
+  ["theatre", "Theatre registrar", "Steady under pressure: +2 Might.", { mig: 2 }],
+  ["birth", "Birth suite registrar", "Always running: +2 Agility.", { agi: 2 }],
+  ["clinic", "Clinic registrar", "Reads everything: +2 Wisdom.", { wis: 2 }],
+  ["ward", "Ward registrar", "Hard to knock down: +2 Vitality.", { vit: 2 }]
+];
+const specOf = id => SPECIALTIES.find(s => s[0] === id) || SPECIALTIES[0];
+function randomLook() { const pick = a => a[Math.floor(Math.random() * a.length)]; const o = {}; for (const [k, v] of Object.entries(LOOK_OPTS)) o[k] = Array.isArray(v[0]) ? pick(v)[0] : pick(v); return o; }
+
+const TEMP_CHAR = { id: "temp", name: "Registrar", look: { ...DEFAULT_LOOK }, spec: "gen", xp: 0, level: 1, points: 3, stats: { vit: 2, agi: 0, mig: 0, wis: 0 }, items: [], equip: {} };
+function migrateChar() {
+  P.chars = P.chars || [];
+  if (P.char && !P.chars.length) { P.chars.push({ ...P.char, id: "c0", name: "Registrar", look: { ...DEFAULT_LOOK }, spec: "gen" }); P.activeChar = "c0"; }
+  delete P.char;
 }
+function hasChars() { migrateChar(); return P.chars.length > 0; }
+function charData() {
+  migrateChar();
+  const c = P.chars.find(x => x.id === P.activeChar) || P.chars[0];
+  if (!c) return TEMP_CHAR;
+  if (P.activeChar !== c.id) P.activeChar = c.id;
+  c.look = { ...DEFAULT_LOOK, ...(c.look || {}) };
+  return c;
+}
+function heroLook() { return charData().look; }
+function newCharacter(name, look, spec) {
+  const base = { vit: 2, agi: 0, mig: 0, wis: 0 };
+  for (const [k, v] of Object.entries(specOf(spec)[3])) base[k] += v;
+  const c = { id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name, look, spec, xp: 0, level: 1, points: 3, stats: base, items: [], equip: {}, created: Date.now() };
+  migrateChar(); P.chars.push(c); P.activeChar = c.id; save(); renderLevelChip();
+  return c;
+}
+
+/* animated preview of a look */
+function heroPreview(cv, getLook) {
+  const pc = cv.getContext("2d"), t0 = performance.now();
+  const p = { x: -9, y: -28, w: 18, h: 28, face: 1, ground: true, vx: 0, vy: 0, sq: 0, pound: 0, dash: 0, wall: 0, flip: 0, blink: 2, hflash: 0, spin: 0, anim: 0, cape: null };
+  function frame(now) {
+    if (!cv.isConnected) return;
+    const t = (now - t0) / 1000, running = (t % 6) > 3, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.round(cv.clientWidth * dpr), H = Math.round(cv.clientHeight * dpr);
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    pc.setTransform(1, 0, 0, 1, 0, 0);
+    const g = pc.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#2b2140"); g.addColorStop(1, "#1a1424"); pc.fillStyle = g; pc.fillRect(0, 0, W, H);
+    pc.fillStyle = "#3a3050"; pc.fillRect(0, H * 0.84, W, H * 0.16); pc.fillStyle = "#8f7fd6"; pc.fillRect(0, H * 0.84, W, 3 * dpr);
+    const S = H / 46;
+    pc.setTransform(S, 0, 0, S, W / 2, H * 0.84);
+    p.vx = running ? 150 : 0; p.anim = running ? t * 150 : 0; p.blink = (t % 3.1) < 0.12 ? -1 : 1;
+    p.cape = Array.from({ length: 7 }, (_, i) => ({ x: -3 - i * (running ? 3.1 : 0.9), y: -17 + i * (running ? 0.9 : 2.5) + Math.sin(t * 7 + i * 0.9) * i * (running ? 0.35 : 0.12) }));
+    const main = ctx; ctx = pc;
+    try { drawHero(p, { ...DEFAULT_LOOK, ...getLook() }, t); } finally { ctx = main; }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* the creator: new character, or edit an existing look */
+function openCreator(opts) {
+  opts = opts || {};
+  const editing = opts.edit ? charData() : null;
+  const st = { name: editing ? editing.name : "", spec: editing ? editing.spec : "gen", look: { ...(editing ? editing.look : DEFAULT_LOOK) } };
+  let built = false;
+  const build = () => { const sc = built ? $("panel").scrollTop : 0; showBuilt(); if (built) { $("panel").classList.remove("in"); $("panel").scrollTop = sc; } built = true; };
+  const showBuilt = () => showModal(p => {
+    const cv = el("canvas", { class: "preview", "aria-label": "Preview of your registrar" });
+    const nameIn = el("input", { id: "charName", type: "text", maxlength: "20", placeholder: "Dr …", value: st.name, autocomplete: "off" });
+    nameIn.addEventListener("input", () => { st.name = nameIn.value; });
+    const row = (title, key, list) => {
+      const box = el("div", { class: "swrow" });
+      for (const v of list) {
+        const val = Array.isArray(v) ? v[0] : v, txt = Array.isArray(v) ? v[1] : null, on = st.look[key] === val;
+        const b = el("button", { type: "button", class: "sw" + (txt ? " txt" : "") + (on ? " on" : ""), "aria-pressed": String(on), "aria-label": title + " " + (txt || val), style: txt ? null : "background:" + val }, txt);
+        b.addEventListener("click", () => { st.look[key] = val; st.name = nameIn.value; build(); });
+        box.append(b);
+      }
+      return el("div", { class: "optrow" }, el("span", { class: "lbl", text: title }), box);
+    };
+    const specs = el("div", { class: "specs" });
+    if (!editing) for (const [id, name, desc] of SPECIALTIES) {
+      const b = el("button", { type: "button", class: "spec" + (st.spec === id ? " on" : ""), "aria-pressed": String(st.spec === id) }, el("b", { text: name }), el("span", { text: desc }));
+      b.addEventListener("click", () => { st.spec = id; st.name = nameIn.value; build(); });
+      specs.append(b);
+    }
+    const looks = el("div", { class: "looks" },
+      row("Skin", "skin", LOOK_OPTS.skin), row("Hair", "hair", LOOK_OPTS.hair), row("Hairstyle", "hairStyle", LOOK_OPTS.hairStyle),
+      row("Outfit", "outfit", LOOK_OPTS.outfit), st.look.outfit !== "coat" ? row("Outfit colour", "scrub", LOOK_OPTS.scrub) : row("Tie", "accent", LOOK_OPTS.accent),
+      row("Cape", "cape", LOOK_OPTS.cape), row("Glasses", "glasses", LOOK_OPTS.glasses), row("Headwear", "hat", LOOK_OPTS.hat),
+      st.look.hat !== "none" ? row("Headwear colour", "capCol", LOOK_OPTS.capCol) : null);
+    const err = el("p", { class: "muted small", hidden: "" });
+    const done = el("button", { type: "button", class: "btn primary", text: editing ? "Save look" : "Create registrar", onclick: () => {
+      const name = (nameIn.value || "").trim();
+      if (!name) { err.hidden = false; err.textContent = "Give your registrar a name."; nameIn.focus(); return; }
+      if (editing) { editing.name = name; editing.look = { ...st.look }; save(); renderLevelChip(); }
+      else { newCharacter(name, { ...st.look }, st.spec); toast("Welcome, " + name + ".", "good"); }
+      closeModal(); if (opts.after) opts.after();
+    } });
+    p.append(el("span", { class: "kicker", text: editing ? "Character · change look" : "New character" }), el("h2", { text: editing ? "Change " + editing.name + "'s look" : "Create your registrar" }),
+      el("div", { class: "creator" }, el("div", { class: "pv" }, cv, el("button", { type: "button", class: "btn quiet", text: "Randomise look", onclick: () => { st.look = randomLook(); st.name = nameIn.value; build(); } })),
+        el("div", { class: "copts" }, el("label", { class: "lbl", for: "charName", text: "Name" }), nameIn,
+          editing ? null : el("span", { class: "lbl", text: "Specialty (sets your starting stats)" }), editing ? null : specs, looks)),
+      err, el("div", { class: "actions" }, done, el("button", { type: "button", class: "btn quiet", text: "Cancel", onclick: () => { closeModal(); if (opts.cancel) opts.cancel(); } })));
+    heroPreview(cv, () => st.look);
+    modalKeys = e => { if (e.key === "Enter" && e.target === nameIn) { done.click(); return true; } return false; };
+  });
+  build();
+}
+
+/* the roster: switch, create, change look, delete */
+function openRoster(back) {
+  migrateChar();
+  showModal(p => {
+    const list = el("div", { class: "roster" });
+    for (const c of P.chars) {
+      const cv = el("canvas", { class: "mini", "aria-hidden": "true" });
+      const active = c.id === P.activeChar;
+      const del = el("button", { type: "button", class: "btn quiet", text: "Delete" });
+      del.addEventListener("click", () => {
+        if (del.dataset.armed !== "1") { del.dataset.armed = "1"; del.textContent = "Tap again to delete " + c.name; return; }
+        P.deleted = [...(P.deleted || []), c.id]; P.chars = P.chars.filter(x => x.id !== c.id);
+        if (P.activeChar === c.id) P.activeChar = P.chars[0] ? P.chars[0].id : null;
+        save(); renderLevelChip(); renderMap(); openRoster(back);
+      });
+      list.append(el("div", { class: "rosterrow" + (active ? " on" : "") }, cv,
+        el("div", { class: "rinfo" }, el("b", { text: c.name + (active ? " · playing" : "") }), el("span", { class: "muted small", text: "Level " + c.level + " · " + specOf(c.spec)[1] + " · " + c.items.length + " of " + Object.keys(ITEMS).length + " items" })),
+        el("div", { class: "actions" }, active ? null : el("button", { type: "button", class: "btn", text: "Play as " + c.name, onclick: () => { P.activeChar = c.id; save(); renderLevelChip(); renderMap(); openRoster(back); } }), del)));
+      heroPreview(cv, () => c.look || DEFAULT_LOOK);
+    }
+    if (!P.chars.length) list.append(el("p", { class: "muted", text: "No characters yet." }));
+    p.append(el("span", { class: "kicker", text: "Characters" }), el("h2", { text: "Your registrars" }),
+      el("p", { class: "muted small", text: "Each registrar has their own level, stats and equipment. Stars, pearls and your review schedule are shared, because they track your learning." }), list,
+      el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "New character", onclick: () => openCreator({ after: () => openRoster(back), cancel: () => openRoster(back) }) }),
+        el("button", { type: "button", class: "btn quiet", text: "Done", onclick: () => back ? back() : closeModal() })));
+  });
+}
+
 const xpNeed = lv => 120 + 80 * (lv - 1);
 function totalStats() {
   const c = charData(), s = { ...c.stats };
@@ -85,7 +236,7 @@ function gainXP(n, x, y) {
 function renderLevelChip() {
   const c = charData();
   const chip = $("levelChip"); if (chip) { chip.querySelector("b").textContent = "Lv " + c.level + (c.points ? " +" + c.points : ""); chip.querySelector("i").style.width = (c.xp / xpNeed(c.level) * 100) + "%"; chip.classList.toggle("hot", c.points > 0); }
-  const mb = $("charBtn"); if (mb) mb.textContent = "Character · Lv " + c.level + (c.points ? " · " + c.points + " point" + (c.points > 1 ? "s" : "") + " to spend" : "");
+  const mb = $("charBtn"); if (mb) mb.textContent = hasChars() ? c.name + " · Lv " + c.level + (c.points ? " · " + c.points + " point" + (c.points > 1 ? "s" : "") + " to spend" : "") : "Create your registrar";
 }
 
 /* equipment */
@@ -134,12 +285,16 @@ function openCharacter(back) {
         el("button", { type: "button", class: "btn" + (on ? " quiet" : ""), text: on ? "Unequip" : "Equip", onclick: () => { if (on) delete c.equip[it.slot]; else c.equip[it.slot] = id; save(); applyDerived(); openCharacter(back); } })));
     }
     const found = owned.length, total = Object.keys(ITEMS).length;
-    p.append(el("span", { class: "kicker", text: "Character" }), el("h2", { text: "Registrar · Level " + c.level }), xpbar,
+    const head = el("div", { class: "sheethead" }, el("canvas", { class: "mini big", "aria-hidden": "true" }), el("div", {}, el("span", { class: "kicker", text: "Character · " + specOf(c.spec)[1] }), el("h2", { text: c.name + " · Level " + c.level })));
+    p.append(head, el("div", { class: "actions" },
+        el("button", { type: "button", class: "btn", text: "Change look", onclick: () => openCreator({ edit: true, after: () => openCharacter(back), cancel: () => openCharacter(back) }) }),
+        G ? null : el("button", { type: "button", class: "btn", text: "Switch or new character", onclick: () => openRoster(() => openCharacter(back)) })), xpbar,
       el("p", { class: "muted small", text: "XP comes mostly from learning: right answers, solved rooms, pearls, guardian recall, true fact wisps, and the Review Shrine." }),
       el("h3", { text: c.points ? c.points + " stat point" + (c.points > 1 ? "s" : "") + " to spend" : "Stats" }), rows, eff,
       el("h3", { text: "Equipped" }), slots,
       el("h3", { text: "Collection · " + found + " of " + total }), inv,
       el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => back ? back() : closeModal() })));
+    heroPreview(head.querySelector("canvas"), () => c.look);
   });
 }
 

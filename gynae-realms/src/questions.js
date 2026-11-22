@@ -138,6 +138,7 @@ function buildRun(L, pack) {
 /* Starting a realm: wait for fresh questions (or skip), then build the run. */
 async function beginRealm(L) {
   closeModal();
+  if (!hasChars()) { openCreator({ after: () => beginRealm(L) }); return; }
   let pack = null, skipped = false;
   const go = pk => { if (GEN[L.id]) GEN[L.id].status = "used"; L.run = buildRun(L, pk); startLevel(L); if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500); };
   if (CAP.sample) {
