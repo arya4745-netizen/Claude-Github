@@ -45,10 +45,12 @@ function mergeInto(src) {
   if (!src) return;
   for (const key of ["stars", "clears", "best", "pearls"]) for (const [k, v] of Object.entries(src[key] || {})) P[key][k] = Math.max(P[key][k] || 0, v);
   for (const [k, v] of Object.entries(src.srs || {})) if (!P.srs[k] || (v.at || 0) > (P.srs[k].at || 0)) P.srs[k] = v;
+  const rank = c => c ? c.level * 1e6 + c.xp + c.items.length : -1;
+  if (src.char && rank(src.char) > rank(P.char)) P.char = src.char;
 }
 function save() {
   P.updated = Date.now();
-  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, updated: P.updated };
+  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, updated: P.updated };
   lsWrite(body);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -74,7 +76,7 @@ async function initCaps() {
       save();
     }
   } catch (e) {}
-  renderStoreNote(); renderMap();
+  renderStoreNote(); renderMap(); renderLevelChip();
 }
 function renderStoreNote() {
   $("storeNote").textContent = storeMode === "cloud" ? "Your stars, pearls and review schedule are saved privately to your account, so they follow you to your phone."
@@ -129,7 +131,7 @@ function openBriefing(L) {
       el("h3", { text: "What you'll cover" }),
       el("div", { class: "chunks" }, ...L.chunks.map(c => el("span", { text: c }))),
       notes.length ? el("div", { class: "note" }, el("b", { text: "Updated from your notes: " }), notes.map(n => n.now.split(";")[0]).join(" · ")) : null,
-      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". Puzzle room: " + ROOMS[L.id].title + " (press ↓ on the ground to use levers and carry items). ",
+      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". Puzzle room: " + ROOMS[L.id].title + " (press ↓ on the ground to use levers and carry items). Gates are timed, the chase hides true-or-false lanes, and fact wisps float about: stomp only the true ones. A riddle chest and the guardian each hold equipment (C opens your character). ",
         el("span", { class: "kbd", text: "← →" }), " move, ", el("span", { class: "kbd", text: "Space" }), " jump (twice for a double jump, against a wall to wall-jump), ",
         el("span", { class: "kbd", text: "Shift" }), " or ", el("span", { class: "kbd", text: "X" }), " dash, ", el("span", { class: "kbd", text: "↓" }), " ground pound, ",
         el("span", { class: "kbd", text: "H" }), " spend Insight at a leap, ", el("span", { class: "kbd", text: "E" }), " reread a sign. On a phone, use the buttons under the game and turn it sideways."),
@@ -194,6 +196,19 @@ function askGate(item, kicker) {
       p.append(box);
       const tail = el("div", { class: "actions" });
       const checkBtn = el("button", { type: "button", class: "btn primary", text: "Check", disabled: "", onclick: () => finish(picked) });
+      // a countdown during a run: answer before it empties
+      let timer = null, tLeft = 0;
+      const timed = !!(G && !G.done), tTotal = Math.round((item.panel ? 45 : multi ? 40 : 30) + (G && G.d ? G.d.timer : 0));
+      if (timed) {
+        const fill = el("i"), secs = el("span", { text: tTotal + "s" }), bar = el("div", { class: "tbar" }, fill, secs);
+        p.insertBefore(bar, p.children[1]);
+        const t0 = performance.now(); tLeft = tTotal;
+        timer = setInterval(() => {
+          tLeft = tTotal - (performance.now() - t0) / 1000;
+          fill.style.width = Math.max(0, tLeft / tTotal * 100) + "%"; secs.textContent = Math.max(0, Math.ceil(tLeft)) + "s"; bar.classList.toggle("low", tLeft < 7);
+          if (tLeft <= 0) finish(multi ? picked : new Set(), true);
+        }, 100);
+      }
       if (multi) tail.append(checkBtn);
       let hintBtn = null;
       const wrongLeft = () => order.filter(oi => !ans.has(oi) && !cleared.has(oi) && !picked.has(oi));
@@ -216,8 +231,10 @@ function askGate(item, kicker) {
         if ((e.key === "h" || e.key === "H") && hintBtn && !hintBtn.disabled) { hintBtn.click(); return true; }
         return false;
       };
-      function finish(sel) {
-        const ok = sel.size === ans.size && [...sel].every(x => ans.has(x));
+      function finish(sel, timeout) {
+        if (timer) { clearInterval(timer); timer = null; }
+        const ok = !timeout && sel.size === ans.size && [...sel].every(x => ans.has(x));
+        if (G) G.quick = ok && timed ? Math.max(0, tLeft / tTotal) : 0;
         btns.forEach((b, n) => {
           const oi = order[n]; b.disabled = true;
           if (ans.has(oi) && sel.has(oi)) b.classList.add("right");
@@ -226,7 +243,7 @@ function askGate(item, kicker) {
         });
         tail.remove();
         const why = el("div", { class: "why " + (ok ? "good" : "bad") },
-          el("span", { class: "verdict " + (ok ? "good" : "bad"), text: ok ? "Correct. The way opens." : "Not quite. You lose a heart." }),
+          el("span", { class: "verdict " + (ok ? "good" : "bad"), text: ok ? "Correct. The way opens." + (G && G.quick > 0.5 ? " Quick answer!" : "") : timeout ? "Out of time. You lose a heart." : "Not quite. You lose a heart." }),
           multi && !ok ? el("p", { text: "Answer: " + item.a.map(i => item.opts[i]).join("; ") + "." }) : null,
           el("p", { text: item.why }));
         p.append(why);
@@ -335,7 +352,7 @@ async function runShrine() {
     let ok;
     if (it.kind === "gate") ok = await askGate(it, kick);
     else ok = (await askRecall(it, kick, ["Remembered.", "Partly there.", "Not yet."])) === 2;
-    if (ok) { srsHit(it.id); right++; } else srsMiss(it.id);
+    if (ok) { srsHit(it.id); right++; gainXP(30); } else srsMiss(it.id);
   }
   showModal(p => p.append(el("span", { class: "kicker", text: "Review Shrine" }), el("h2", { text: right + " of " + ids.length + " remembered" }),
     el("p", { class: "lore", text: "Remembered questions move up the ladder and come back later. The rest return tomorrow." }),
@@ -354,6 +371,7 @@ addEventListener("keydown", e => {
   if (k) { press(k); e.preventDefault(); }
   if (e.code === "KeyE") { if (nearSign) openSign(nearSign); }
   if (e.code === "KeyH") useLeapInsight();
+  if (e.code === "KeyC" && !modalOpen) openCharacter(closeModal);
   if (e.code === "KeyR" && G.room && G.room.inside) roomReset(G.room);
   if (e.code === "Escape" || e.code === "KeyP") openPause();
 });
@@ -374,7 +392,8 @@ const TIPS_SEEN = new Set();
 function buildLevel(L) {
   const R = rng(hashStr(L.id + "realm-v2"));
   const cols = [];
-  const B = { plats: [], ev: [], spawns: [], springs: [], spikes: [], pearls: [], potions: [], tips: [] };
+  const B = { plats: [], ev: [], spawns: [], springs: [], spikes: [], pearls: [], potions: [], tips: [], pulses: [], droppers: [], chests: [] };
+  const facts = shuffle((FACTS[L.id] || []).slice(), R); let factN = 0;
   let mode = "normal", fillerN = 0, chimneys = 0, potions = 0, checks = 0;
   const X = () => cols.length;
   const col = top => { const c = new Uint8Array(ROWS); if (top >= 0) for (let y = top; y < ROWS; y++) c[y] = 1; cols.push(c); return c; };
@@ -408,6 +427,9 @@ function buildLevel(L) {
         tip(x, "chimney", "Wall jump: slide down a wall, then jump to kick off it. Zig-zag up the shaft, holding towards the next wall.");
         break;
       }
+      case "pulse": { flat(8); B.pulses.push({ x: (x + 2) * TILE, y: GR * TILE - 16, w: 4 * TILE, h: 16, per: 1.9, ph: R() * 1.9 }); tip(x, "pulse", "Pulse spikes rise on a rhythm. Watch them, then cross while they're down."); break; }
+      case "drop": { flat(8); for (let k = 0; k < 2; k++) B.droppers.push({ x: (x + 2 + k * 3) * TILE + 16, y: 46 + k * 14 }); tip(x, "drop", "Loose rocks shake, then fall when you pass beneath. Keep moving."); break; }
+      case "chest": { flat(9); block(x + 1, GR - 3, 2); block(x + 4, GR - 6, 3); B.chests.push({ x: (x + 5) * TILE + 16, y: (GR - 6) * TILE }); tip(x, "chest", "A riddle chest sits up high. Stand beside it and press ↓, then answer to open it."); break; }
       case "pocket": { flat(2); const s = X(); for (let k = 0; k < 3; k++) { const c = col(GR); c[GR] = 4; c[GR + 1] = 0; } flat(2); B.pearls.push({ x: (s + 1) * TILE + 16, y: (GR + 1) * TILE + 16 }); tip(s, "pocket", "Cracked floor: jump, then press down to ground-pound through it. Something glints below."); break; }
       case "high": { flat(8); block(x + 1, GR - 3, 3); block(x + 5, GR - 6, 2); B.pearls.push({ x: (x + 6) * TILE, y: (GR - 7) * TILE + 6 }); tip(x, "high", "A pearl sits high above. Double jump from the ledge."); break; }
       case "gap": { flat(1); const s = X(); pit(7); oneway(s + 3, GR - 1, 1, "crumble"); B.pearls.push({ x: (s + 3) * TILE + 16, y: (GR - 4) * TILE }); flat(2); tip(s, "gap", "Wide gap: double jump and dash (Shift or X) to cross. The pearl hangs over the middle."); break; }
@@ -416,11 +438,12 @@ function buildLevel(L) {
   function filler(len) {
     fillerN++;
     const start = X();
-    const pearlKinds = { 2: "pocket", 4: "high", 7: "gap" };
+    const pearlKinds = { 2: "pocket", 4: "high", 6: "chest", 7: "gap" };
     if (pearlKinds[fillerN] && mode !== "chase") feature(pearlKinds[fillerN]);
+    if ([1, 3, 5, 8].includes(fillerN) && mode === "normal" && factN < facts.length) { flat(5); spawn(X() - 3, GR, "fact:" + factN); factN++; }
     const pool = mode === "calm" ? ["flat", "flat", "step", "floats"]
-      : mode === "chase" ? ["pit", "crumble", "spikes", "floats", "spring", "flat", "step", "pit", "spikes"]
-      : ["flat", "pit", "step", "floats", "mover", "crumble", "spikes", "spring", "chimney", "flat", "step"];
+      : mode === "chase" ? ["pit", "crumble", "spikes", "floats", "spring", "flat", "step", "pit", "pulse"]
+      : ["flat", "pit", "step", "floats", "mover", "crumble", "spikes", "spring", "chimney", "flat", "step", "pulse", "drop"];
     while (X() - start < len) {
       let k = pool[Math.floor(R() * pool.length)];
       if (k === "chimney" && (chimneys >= 2 || fillerN < 2)) k = "floats";
@@ -431,11 +454,27 @@ function buildLevel(L) {
   function chase() {
     flat(3);
     const x0 = X();
-    mode = "chase"; filler(44); mode = "normal";
+    mode = "chase"; filler(10); fork(0); filler(10); fork(1); filler(8); mode = "normal";
     flat(2); const x1 = X();
     B.ev.push({ type: "chase", x0, x1 });
     B.ev.push({ type: "check", x: X() }); flat(3);
     puzzleRoom();
+  }
+  /* True/false fork: TRUE = high road on stone, FALSE = low road beneath. The wrong lane ends in a solid veil (tile 5), the right one in a passable veil (tile 6). */
+  function fork(k) {
+    const tf = (CHASE_TF[L.id] || [])[k]; if (!tf) return;
+    flat(3);
+    const a = X();
+    col(GR);
+    const st = col(GR); st[GR - 2] = 2;
+    col(GR);
+    for (let i = 0; i < 9; i++) { const c = col(GR); c[GR - 4] = 2; }
+    const v = col(GR);
+    for (let y = 0; y <= GR - 5; y++) v[y] = tf[1] ? 6 : 5;
+    v[GR - 4] = 2;
+    for (let y = GR - 3; y <= GR - 1; y++) v[y] = tf[1] ? 5 : 6;
+    flat(4);
+    B.ev.push({ type: "fork", x0: a, vx: a + 12, tf });
   }
   function puzzleRoom() {
     const g = ROOM_GEOM[L.id]; if (!g) return;
@@ -495,7 +534,7 @@ function buildLevel(L) {
   const W = cols.length, tiles = new Uint8Array(W * ROWS);
   cols.forEach((c, x) => { for (let y = 0; y < ROWS; y++) tiles[y * W + x] = c[y]; });
   for (let y = 0; y < ROWS; y++) tiles[y * W + W - 1] = 1;
-  return { W, tiles, ...B, arena: { x0: ax, x1: endX } };
+  return { W, tiles, ...B, facts, arena: { x0: ax, x1: endX } };
 }
 
 /* ================= game state ================= */
@@ -506,8 +545,9 @@ function startLevel(L) {
   const pearlFacts = shuffle(L.boss.recall.filter(id => QB[id]), R);
   G = {
     L, t: L.theme, W: B.W, tiles: B.tiles, dyn: new Uint8Array(B.W), arena: B.arena,
-    player: { x: 1.2 * TILE, y: 0, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0, jumps: 1, wall: 0, lock: 0, dash: 0, dashReady: true, dashCd: 0, pound: 0, hang: 0, onPlat: null, sq: 0, stepT: 0, blink: 2, spin: 0, cape: null, hflash: 0 },
-    hearts: MAXH, insight: 1, score: 0, streak: 0, bestStreak: 0, pearlsGot: 0,
+    player: { x: 1.2 * TILE, y: 0, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0, jumps: 1, wall: 0, lock: 0, dash: 0, dashes: 1, dashCd: 0, pound: 0, hang: 0, onPlat: null, sq: 0, stepT: 0, blink: 2, spin: 0, cape: null, hflash: 0 },
+    hearts: 5, insight: 1, score: 0, streak: 0, bestStreak: 0, pearlsGot: 0,
+    pulses: B.pulses, droppers: B.droppers.map(d => ({ ...d, y0: d.y, state: "hang", t: 0, vy: 0 })), forks: [],
     enemies: [], doors: [], signs: [], orbs: [], flags: [], zones: {}, shots: [], waves: [], fx: [], pops: [], trail: [],
     plats: B.plats.map(p => ({ ...p, x0: p.x, y0: p.y, t: 0, dx: 0 })), springs: B.springs, spikes: B.spikes, tips: B.tips,
     pearls: B.pearls.map((p, i) => ({ ...p, taken: false, fact: pearlFacts[i % pearlFacts.length] })), potions: B.potions,
@@ -516,6 +556,9 @@ function startLevel(L) {
     startX: 0, bossStarted: false, done: false
   };
   G.player.y = GR * TILE - G.player.h;
+  G.d = derived(); G.maxH = G.d.maxH; G.hearts = G.maxH; G.insight = Math.min(G.d.maxI, G.d.startI); G.wardReady = true;
+  G.player.jumps = G.d.airJumps; G.player.dashes = G.d.airDashes;
+  G.chests = B.chests.map(c => ({ ...c, state: "locked", t: 0, asked: [] })); G.loot = null;
   for (const e of B.ev) {
     if (e.type === "check") G.flags.push({ x: e.x * TILE + 8, y: GR * TILE, on: !!e.start });
     else if (e.type === "sign") G.signs.push({ x: e.x * TILE + 4, y: GR * TILE - 34, w: 26, h: 34, seg: e.seg, read: false });
@@ -526,17 +569,20 @@ function startLevel(L) {
       if (e.kind === "room" && G.room) G.room.door = d;
     }
     else if (e.type === "room") G.room = makeRoom(L, e.x0, e.x1);
+    else if (e.type === "fork") G.forks.push({ x0: e.x0 * TILE, vx: e.vx * TILE, tf: e.tf, resolved: false, wrong: false, flash: 0 });
     else if (e.type === "zone") G.zones[e.gid] = { gid: e.gid, seg: e.seg, kind: e.kind, x0: e.x0 * TILE, x1: e.x1 * TILE, intro: false, got: 0, total: e.kind === "pick" ? e.seg.good.length : 1, done: false, wrong: false };
     else if (e.type === "orb") G.orbs.push({ x: e.x * TILE + 16, y: e.row * TILE - 30, r: 11, gid: e.gid, ...e.item, taken: false, ph: Math.random() * 6 });
     else if (e.type === "chase") G.chase = { x0: e.x0 * TILE, x1: e.x1 * TILE, wx: (e.x0 - 8) * TILE, active: false, done: false, ...L.chase };
     else if (e.type === "boss") G.bossX = e.x * TILE;
   }
   G.check = G.flags[0];
+  clearChunks(); forkShown = null; renderLevelChip();
   for (const s of B.spawns) {
     const base = { alive: true, t: Math.random() * 6 };
     if (s.kind === "walk") G.enemies.push({ ...base, kind: "walk", x: s.x * TILE + 4, y: s.row * TILE - 22, w: 24, h: 22, vx: -48, vy: 0 });
     else if (s.kind === "hopper") G.enemies.push({ ...base, kind: "hopper", x: s.x * TILE + 4, y: s.row * TILE - 20, w: 22, h: 20, vx: 0, vy: 0, jt: 1 + Math.random(), grounded: false });
     else if (s.kind === "turret") G.enemies.push({ ...base, kind: "turret", x: s.x * TILE + 4, y: s.row * TILE - 22, w: 24, h: 22, cd: 1.5 + Math.random() });
+    else if (s.kind.startsWith("fact:")) { const f = B.facts[+s.kind.slice(5)]; if (f) G.enemies.push({ ...base, kind: "fact", fact: f, x: s.x * TILE, y: (s.row - 2.6) * TILE, w: 26, h: 22, bx: s.x * TILE, by: (s.row - 2.6) * TILE }); }
     else G.enemies.push({ ...base, kind: "fly", x: s.x * TILE, y: (s.row - 3.2) * TILE, w: 22, h: 18, bx: s.x * TILE, by: (s.row - 3.2) * TILE });
   }
   G.startX = G.player.x; G.arenaX = G.arena.x0 * TILE;
@@ -544,7 +590,7 @@ function startLevel(L) {
   $("lvlChip").textContent = L.name; $("toasts").textContent = "";
   $("bossbar").hidden = true; $("meterChip").hidden = !L.meter; $("leapCard").hidden = true; leapShown = null;
   $("roomCard").hidden = true; $("stage").classList.remove("carded", "leaping");
-  heartsShown = MAXH; renderHearts(); renderSlips(); renderInsight(); renderScore(); resize();
+  heartsShown = G.maxH; renderHearts(); renderSlips(); renderInsight(); renderScore(); resize();
   lastFrame = performance.now();
   toast(L.station + ". Read the signs: the gates and leaps ask about them.");
 }
@@ -557,13 +603,13 @@ let heartsShown = MAXH;
 function renderHearts() {
   const h = $("hearts"), cls = G.hearts < heartsShown ? "hit" : G.hearts > heartsShown ? "gain" : null; heartsShown = G.hearts;
   if (cls && !RM) { h.classList.remove("hit", "gain"); void h.offsetWidth; h.classList.add(cls); }
-  $("hearts").innerHTML = Array.from({ length: MAXH }, (_, i) => i < G.hearts ? HEART_FULL : HEART_EMPTY).join(""); $("hearts").setAttribute("aria-label", G.hearts + " of " + MAXH + " hearts"); }
+  $("hearts").innerHTML = Array.from({ length: G.maxH }, (_, i) => i < G.hearts ? HEART_FULL : HEART_EMPTY).join(""); $("hearts").setAttribute("aria-label", G.hearts + " of " + G.maxH + " hearts"); }
 function renderSlips() { $("slipChip").textContent = "Slips " + G.slips; }
-function renderInsight() { const c = $("insightChip"); c.textContent = ""; c.append("Insight ", el("span", { class: "pips" }, "◆".repeat(G.insight), el("i", { text: "◇".repeat(MAXI - G.insight) }))); c.setAttribute("aria-label", "Insight " + G.insight + " of " + MAXI); if (leapShown) renderLeapCard(leapShown); }
+function renderInsight() { const c = $("insightChip"); c.textContent = ""; c.append("Insight ", el("span", { class: "pips" }, "◆".repeat(G.insight), el("i", { text: "◇".repeat(Math.max(0, G.d.maxI - G.insight)) }))); c.setAttribute("aria-label", "Insight " + G.insight + " of " + G.d.maxI); if (leapShown) renderLeapCard(leapShown); }
 function renderScore() { $("scoreChip").textContent = Math.round(G.scoreShown).toLocaleString() + (G.streak >= 2 ? "  ×" + G.streak : ""); }
 function addScore(n, x, y) { G.score += n; renderScore(); if (x != null) G.pops.push({ x, y, text: "+" + n, life: 1 }); }
-function gainInsight(n) { const before = G.insight; G.insight = Math.min(MAXI, G.insight + n); if (G.insight > before) { renderInsight(); const c = $("insightChip"); if (!RM) { c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse"); } } }
-function rightAnswer(x, y) { G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); addScore(100 + 25 * (G.streak - 1), x, y); }
+function gainInsight(n) { const before = G.insight; G.insight = Math.min(G.d.maxI, G.insight + n); if (G.insight > before) { renderInsight(); const c = $("insightChip"); if (!RM) { c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse"); } } }
+function rightAnswer(x, y) { G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); addScore(100 + 25 * (G.streak - 1), x, y); gainXP(40, x, y - 16); }
 function toast(msg, kind, ms) {
   const t = el("div", { class: "toast" + (kind ? " " + kind : ""), text: msg });
   const box = $("toasts"); box.append(t); while (box.children.length > 3) box.firstChild.remove();
@@ -576,6 +622,8 @@ function updateNear() {
   const consider = (ox, oy, text, sign) => { const d = Math.hypot(ox - cx, oy - cy); if (d < bd) { bd = d; best = { text, sign }; } };
   for (const s of G.signs) consider(s.x + 13, s.y + 17, (s.seg.steps ? "Scroll: " : "Sign: ") + s.seg.title, s);
   for (const o of G.orbs) if (!o.taken) consider(o.x, o.y, "Orb: " + o.full, null);
+  for (const e of G.enemies) if (e.alive && e.kind === "fact") consider(e.x + e.w / 2, e.y + e.h / 2 + 30, "Fact wisp: \u201c" + e.fact[0] + "\u201d. Stomp it if TRUE.", null);
+  for (const ch of G.chests) if (ch.state !== "open") consider(ch.x, ch.y - 10, ch.state === "sealed" ? "Riddle chest: resealing…" : "↓ Open the riddle chest (answer a question)", null);
   if (G.room) roomNear(G.room, (x, y, text) => consider(x, y, text, null));
   nearSign = best && best.sign;
   const box = $("near");
@@ -587,6 +635,7 @@ function updateNear() {
 $("nearBtn").addEventListener("click", () => { if (nearSign) openSign(nearSign); });
 $("pauseBtn").addEventListener("click", e => { e.currentTarget.blur(); openPause(); });
 $("shrineBtn").addEventListener("click", runShrine);
+$("charBtn").addEventListener("click", () => openCharacter(() => { closeModal(); renderMap(); renderLevelChip(); }));
 
 /* Leap of Judgement card */
 let leapShown = null;
@@ -615,9 +664,10 @@ function openPause() {
   if (!G || modalOpen) return;
   showModal(p => p.append(
     el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "Paused" }),
-    el("p", { class: "muted", text: "Score " + G.score.toLocaleString() + ". Slips " + G.slips + ". Pearls " + G.pearlsGot + " of 3. Hearts " + G.hearts + " of " + MAXH + "." }),
+    el("p", { class: "muted", text: "Score " + G.score.toLocaleString() + ". Slips " + G.slips + ". Pearls " + G.pearlsGot + " of 3. Hearts " + G.hearts + " of " + G.maxH + "." }),
     el("div", { class: "actions" },
       el("button", { type: "button", class: "btn primary", text: "Resume", onclick: closeModal }),
+      el("button", { type: "button", class: "btn", text: "Character", onclick: () => openCharacter(() => { closeModal(); openPause(); }) }),
       el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(G.L, () => { closeModal(); openPause(); }) }),
       el("button", { type: "button", class: "btn", text: "Back to the last banner", onclick: () => { closeModal(); respawn(); } }),
       G.room && G.room.inside && !G.room.solved ? el("button", { type: "button", class: "btn", text: "Reset the puzzle room", onclick: () => { closeModal(); roomReset(G.room); } }) : null,
@@ -663,7 +713,7 @@ async function triggerDoor(d) {
     const it = QB[d.seg.id];
     const ok = await askGate(it, "Gate · " + G.L.station);
     if (!G) return;
-    if (ok) { srsHit(it.id); rightAnswer(d.col * TILE, GR * TILE - 110); } else { srsMiss(it.id); G.missed.push(it.id); }
+    if (ok) { srsHit(it.id); rightAnswer(d.col * TILE, GR * TILE - 110); const qb = Math.round(150 * (G.quick || 0)); if (qb > 0) addScore(qb, d.col * TILE, GR * TILE - 130); } else { srsMiss(it.id); G.missed.push(it.id); }
     openDoor(d);
     if (!ok) knowledgeHit();
   } else if (d.kind === "echo") {
@@ -675,7 +725,7 @@ async function triggerDoor(d) {
       for (let i = 0; i < echoes.length; i++) {
         const ok = await askGate(QB[echoes[i]], "Echo Gate · " + (i + 1) + " of " + echoes.length);
         if (!G) return;
-        if (ok) addScore(60); else { knowledgeHit(); if (G.hearts <= 0) break; }
+        if (ok) { addScore(60); gainXP(20); } else { knowledgeHit(); if (G.hearts <= 0) break; }
       }
     }
     if (G) openDoor(d);
@@ -698,6 +748,7 @@ function zoneComplete(z) {
   z.done = true; openDoor(z.door);
   const s = z.seg;
   if (!z.wrong) addScore(200, z.door.col * TILE, GR * TILE - 110);
+  gainXP(z.wrong ? 10 : 30);
   showModal(p => {
     const cont = el("button", { type: "button", class: "btn primary", text: "Onward", onclick: closeModal });
     p.append(el("span", { class: "kicker", text: "Complete · " + s.title }), el("h2", { text: "What you gathered" }), el("ul", { class: "list" }, ...s.good.map(x => el("li", { text: x[1] }))),
@@ -711,7 +762,7 @@ function touchOrb(o) {
   if (o.taken || z.done) return;
   o.taken = true;
   if (o.good) {
-    z.got++; burst(o.x, o.y, G.t.accent, 14); ring(o.x, o.y, G.t.accent, 200); addScore(50, o.x, o.y - 20);
+    z.got++; burst(o.x, o.y, G.t.accent, 14); ring(o.x, o.y, G.t.accent, 200); gainXP(10, o.x, o.y - 36); addScore(50, o.x, o.y - 20);
     toast("Gathered " + z.got + " of " + z.total + ": " + o.full, "good");
     if (z.got === z.total) setTimeout(() => G && zoneComplete(z), 250);
   } else { z.wrong = true; burst(o.x, o.y, "#ff7a8a", 16); knowledgeHit(o.full + ": " + o.why); }
@@ -742,7 +793,7 @@ function landAnswer(pl) {
   }
 }
 function takePearl(pr) {
-  pr.taken = true; G.pearlsGot++; gainInsight(1); addScore(300, pr.x, pr.y - 20);
+  pr.taken = true; G.pearlsGot++; gainInsight(1); gainXP(50, pr.x, pr.y - 38); addScore(300, pr.x, pr.y - 20);
   burst(pr.x, pr.y, "#ffffff", 26); burst(pr.x, pr.y, "#8fd3ff", 16); ring(pr.x, pr.y, "#d9c8ff", 260); hitstop(0.05);
   const it = QB[pr.fact];
   showModal(p => {
@@ -763,7 +814,7 @@ function startBoss() {
   G.boss = { x: G.bossX, y: GR * TILE - 70, w: 70, h: 70, vx: 0, vy: 0, hp: prev ? prev.hp : B.hp, max: B.hp, t: 0, act: 1.6, inv: 0, face: -1, flying, trail: [], dead: false,
     phase: prev ? prev.phase : 1, spike: "down", spikeT: 2.5, attacks: 0 };
   $("bossbar").hidden = false; $("bossName").textContent = B.name; updateBossBar();
-  toast(B.name + " blocks the way. Stomp it to make it answer.");
+  toast(B.name + " blocks the way. Stomp it to make it answer. Dash into its shots to reflect them.", null, 6000);
 }
 function updateBossBar() { $("bossHp").style.width = Math.max(0, G.boss.hp / G.boss.max * 100) + "%"; $("bossName").textContent = G.L.boss.name + (G.boss.phase === 2 ? " · enraged" : ""); }
 async function bossRecall(heavy) {
@@ -773,9 +824,11 @@ async function bossRecall(heavy) {
   const s = await askRecall(it, G.L.boss.name + " asks · " + it.src + (heavy ? " · crown broken" : ""));
   if (!G) return;
   G.recall.push(s);
+  if (s > 0) gainXP(s === 2 ? 40 : 15, b.x + b.w / 2, b.y - 30);
   if (s === 2) { srsHit(it.id); G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); } else { srsMiss(it.id); G.missed.push(it.id); }
   addScore(s * 200, b.x + b.w / 2, b.y - 10);
-  b.hp -= s; b.inv = 1.4; updateBossBar(); if (s > 0) { b.flash = 1; G.shake = Math.max(G.shake, 0.25 * s); }
+  const dmg = s + (s === 2 && G.d.bonusHit ? 1 : 0); if (dmg > s) toast("Might: a double strike!", "good");
+  b.hp -= dmg; b.inv = 1.4; updateBossBar(); if (s > 0) { b.flash = 1; G.shake = Math.max(G.shake, 0.25 * s); }
   if (s > 0) burst(b.x + b.w / 2, b.y + 10, G.t.accent, 24);
   if (s === 0) knowledgeHit();
   if (!G) return;
@@ -784,12 +837,19 @@ async function bossRecall(heavy) {
     toast(G.L.boss.name + " enrages and grows a spike crown. When the spikes are up, only a ground pound breaks through.", "bad", 6500);
   }
 }
+function staggerBoss() {
+  const b = G.boss; if (!b || b.dead || b.dying) return;
+  b.stagger = G.d.stagger; b.spike = "down"; b.spikeT = G.d.stagger; b.flash = 1; b.vx = 0; G.shake = 0.35; hitstop(0.1);
+  burst(b.x + b.w / 2, b.y + b.h / 2, "#8fd3ff", 30); gainXP(5);
+  toast("Staggered! The guardian is open. Stomp it now.", "good", 3500);
+}
 function finalizeBoss() {
   const b = G.boss;
   b.dead = true; b.dying = 0; G.shake = 0.6; hitstop(0.12);
   burst(b.x + b.w / 2, b.y + b.h / 2, G.t.accent, 60, { size: 3.2 }); burst(b.x + b.w / 2, b.y + b.h / 2, "#ffffff", 30, { size: 3 });
   ring(b.x + b.w / 2, b.y + b.h, "#ffffff", 420); ring(b.x + b.w / 2, b.y + b.h, G.t.accent, 280);
-  $("bossbar").hidden = true; addScore(500);
+  $("bossbar").hidden = true; addScore(500); gainXP(100);
+  G.loot = { id: itemFor(G.L.id, "boss"), x: G.arena.x1 * TILE - 7 * TILE, y: GR * TILE - 30, t: 0, taken: false };
   G.portal = { x: G.arena.x1 * TILE - 3 * TILE, y: GR * TILE - 56, born: G.time };
   const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0;
   toast(G.L.boss.name + " falls. A portal opens.", "good");
@@ -803,6 +863,7 @@ function finishLevel() {
   const newBest = G.score > (P.best[L.id] || 0);
   P.stars[L.id] = Math.max(P.stars[L.id] || 0, stars); P.clears[L.id] = (P.clears[L.id] || 0) + 1;
   P.best[L.id] = Math.max(P.best[L.id] || 0, G.score); P.pearls[L.id] = Math.max(P.pearls[L.id] || 0, G.pearlsGot); save();
+  gainXP(100);
   const missed = [...new Set(G.missed)];
   showModal(p => {
     const bs = el("div", { class: "bigstars", "aria-label": stars + " of 3 stars" }); for (let i = 0; i < 3; i++) bs.append(i < stars ? el("b", { text: "★" }) : "☆");
@@ -814,6 +875,7 @@ function finishLevel() {
         el("span", { text: "Pearls" }), el("span", { text: G.pearlsGot + " / 3" }),
         el("span", { text: "Best answer streak" }), el("span", { text: String(G.bestStreak) }),
         el("span", { text: "Knowledge slips" }), el("span", { text: String(G.slips) }),
+        el("span", { text: "Character level" }), el("span", { text: String(charData().level) }),
         el("span", { text: "Guardian recall average" }), el("span", { text: avg.toFixed(1) + " / 2 over " + G.recall.length })));
     if (missed.length) p.append(el("h3", { text: "Sent to the Review Shrine" }), el("ul", { class: "missed-list" }, ...missed.map(id => { const it = QB[id]; return el("li", {}, el("div", { text: it.q }), el("div", { class: "a", text: answerText(it) })); })));
     else p.append(el("p", { class: "lore", text: "A clean run. Nothing goes to the shrine from this realm." }));
@@ -827,8 +889,10 @@ function finishLevel() {
 function solid(tx, ty) {
   if (tx < 0 || tx >= G.W) return true;
   if (G.dyn[tx] && ty < GR) return true;
-  if (ty < 0 || ty >= ROWS) return false;
-  return G.tiles[ty * G.W + tx] > 0;
+  if (ty < 0) return G.tiles[tx] === 5;
+  if (ty >= ROWS) return false;
+  const v = G.tiles[ty * G.W + tx];
+  return v > 0 && v !== 6;
 }
 function rectSolid(x, y, w, h) {
   const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.01) / TILE), y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.01) / TILE);
@@ -848,6 +912,7 @@ function moveY(e, dy) {
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 function hurt(fromX, up) {
   const p = G.player; if (p.inv > 0 || p.dash > 0) return;
+  if (G.d.ward && G.wardReady) { G.wardReady = false; p.inv = 1; ring(p.x + p.w / 2, p.y + p.h / 2, "#8fd3ff", 220); toast("Your Slime-proof Gloves absorb the hit. The ward returns at the next banner.", "good"); return; }
   G.hearts--; renderHearts(); p.inv = 1.3; p.pound = 0; G.shake = 0.2; p.hflash = 1; hitstop(0.09);
   p.vx = (p.x + p.w / 2 < fromX ? -1 : 1) * 260; p.vy = up ? -480 : -320;
   burst(p.x + 9, p.y + 10, "#ff7a8a", 10);
@@ -855,7 +920,7 @@ function hurt(fromX, up) {
 }
 function respawn() {
   const p = G.player, c = G.check;
-  Object.assign(p, { x: c.x - 4, y: GR * TILE - p.h - 1, vx: 0, vy: 0, inv: 1, dash: 0, pound: 0, onPlat: null, jumps: 1, dashReady: true, cape: null, sq: 0 });
+  Object.assign(p, { x: c.x - 4, y: GR * TILE - p.h - 1, vx: 0, vy: 0, inv: 1, dash: 0, pound: 0, onPlat: null, jumps: G.d.airJumps, dashes: G.d.airDashes, cape: null, sq: 0 });
   ring(p.x + p.w / 2, p.y + p.h, G.t.accent, 220); burst(p.x + p.w / 2, p.y + p.h / 2, G.t.accent, 16, { g: -100 });
   if (G.boss && !G.boss.dead) { const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0; G.bossStarted = false; G.shots = []; G.waves = []; $("bossbar").hidden = true; }
   const ch = G.chase;
@@ -866,7 +931,7 @@ function respawn() {
 function faint() {
   G.hearts = 0; renderHearts();
   showModal(p => {
-    const cont = el("button", { type: "button", class: "btn primary", text: "Rise again", onclick: () => { closeModal(); G.hearts = MAXH; renderHearts(); respawn(); } });
+    const cont = el("button", { type: "button", class: "btn primary", text: "Rise again", onclick: () => { closeModal(); G.hearts = G.maxH; renderHearts(); respawn(); } });
     p.append(el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "You fainted" }),
       el("p", { class: "lore", text: "You wake at the last banner with full hearts. Opened gates stay open, and your missed questions are waiting at the Echo Gate." }), el("div", { class: "actions" }, cont,
         el("button", { type: "button", class: "btn quiet", text: "Leave the realm", onclick: quitToMap })));
@@ -899,6 +964,7 @@ function breakCracked(tx, ty) {
   if (tx < 0 || tx >= G.W || G.tiles[ty * G.W + tx] !== 4) return;
   G.tiles[ty * G.W + tx] = 0;
   burst(tx * TILE + 16, ty * TILE + 10, G.t.top, 10);
+  markDirty(tx);
   if (G.room && G.room.impl.onBreak && tx >= G.room.c0 && tx < G.room.c1) G.room.impl.onBreak(G.room, tx, ty);
   breakCracked(tx - 1, ty); breakCracked(tx + 1, ty);
   if (ty > 0) breakCracked(tx, ty - 1);
@@ -916,23 +982,23 @@ function updatePlayer(dt) {
   // dash
   if (pressed.dash) {
     pressed.dash = false;
-    if (p.dashReady && p.dashCd <= 0 && !p.pound) { p.dash = 0.15; p.dashCd = 0.32; if (!p.ground) p.dashReady = false; if (dir) p.face = dir; ring(p.x + 9, p.y + 14, "#8fd3ff"); }
+    if (p.dashes > 0 && p.dashCd <= 0 && !p.pound) { p.dash = 0.15; p.dashCd = G.d.dashCd; if (!p.ground) p.dashes--; if (dir) p.face = dir; ring(p.x + 9, p.y + 14, "#8fd3ff"); }
   }
   // ground pound
   if (pressed.down) {
     pressed.down = false;
-    if (p.ground) roomInteract();
+    if (p.ground) { if (!roomInteract()) chestInteract(); }
     else if (!p.pound && p.dash <= 0) { p.pound = 1; p.hang = 0.1; p.vx = 0; p.vy = 0; }
   }
   if (p.dash > 0) {
-    p.dash -= dt; p.vx = p.face * 520; p.vy = 0;
+    p.dash -= dt; p.vx = p.face * G.d.dashSpeed; p.vy = 0;
     G.trail.push({ x: p.x, y: p.y, f: p.face, life: 0.25 });
   } else if (p.pound === 1) {
     p.hang -= dt; p.vx = 0; p.vy = 0; if (p.hang <= 0) { p.pound = 2; p.vy = 1050; }
   } else if (p.pound === 2) {
     p.vx = 0; p.vy = 1050;
   } else {
-    if (dir) { p.vx += dir * 2000 * dt; p.vx = clamp(p.vx, -205, 205); p.face = dir; }
+    if (dir) { p.vx += dir * 2000 * dt; p.vx = clamp(p.vx, -G.d.speed, G.d.speed); p.face = dir; }
     else if (p.lock <= 0) { const f = (p.ground ? 2200 : 900) * dt; p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f; }
     p.vy += 1900 * dt; if (!keys.jump && p.vy < -240) p.vy += 2400 * dt; p.vy = Math.min(p.vy, 900);
   }
@@ -940,7 +1006,7 @@ function updatePlayer(dt) {
   p.wall = 0;
   if (!p.ground && p.dash <= 0 && !p.pound && dir && p.vy > -50) {
     const probe = dir > 0 ? p.x + p.w + 0.5 : p.x - 1.5;
-    if (rectSolid(probe, p.y + 4, 1, p.h - 10)) { p.wall = dir; if (p.vy > 110) p.vy = 110; p.jumps = 1; p.dashReady = true; if (Math.random() < 0.2) G.fx.push({ x: dir > 0 ? p.x + p.w : p.x, y: p.y + p.h - 4, vx: -dir * 20, vy: -20, life: 0.3, c: "#d8d0e8" }); }
+    if (rectSolid(probe, p.y + 4, 1, p.h - 10)) { p.wall = dir; if (p.vy > 110) p.vy = 110; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; if (Math.random() < 0.2) G.fx.push({ x: dir > 0 ? p.x + p.w : p.x, y: p.y + p.h - 4, vx: -dir * 20, vy: -20, life: 0.3, c: "#d8d0e8" }); }
   }
   // jumps
   if (p.buf > 0 && !p.pound) {
@@ -966,7 +1032,7 @@ function updatePlayer(dt) {
     }
   }
   if (p.ground) {
-    p.coyote = 0.1; p.jumps = 1; p.dashReady = true;
+    p.coyote = 0.1; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes;
     if (!wasGround && vyBefore > 120) { const k = clamp(vyBefore / 900, 0.15, 1); p.sq = -0.34 * k; if (vyBefore > 300) { dust(p.x + 2, p.y + p.h, 2 + Math.round(k * 3), -1); dust(p.x + p.w - 2, p.y + p.h, 2 + Math.round(k * 3), 1); } }
     if (wasPound) poundLand();
   }
@@ -1009,7 +1075,7 @@ function poundLand() {
   p.pound = 0; G.shake = 0.18;
   ring(p.x + 9, p.y + p.h, G.t.top); burst(p.x + 9, p.y + p.h, G.t.top, 10);
   dust(p.x + 2, p.y + p.h, 5, -1.4); dust(p.x + p.w - 2, p.y + p.h, 5, 1.4); hitstop(0.05);
-  for (const e of G.enemies) if (e.alive && Math.abs(e.x + e.w / 2 - (p.x + 9)) < 70 && Math.abs(e.y + e.h - (p.y + p.h)) < 40) { killEnemy(e, "fly"); addScore(50, e.x, e.y - 10); }
+  for (const e of G.enemies) if (e.alive && e.kind !== "fact" && Math.abs(e.x + e.w / 2 - (p.x + 9)) < G.d.poundR && Math.abs(e.y + e.h - (p.y + p.h)) < 40) { killEnemy(e, "fly"); gainXP(3); addScore(50, e.x, e.y - 10); }
 }
 
 function update(dt) {
@@ -1026,6 +1092,10 @@ function update(dt) {
     if (!pl.alive && pl.fall) { pl.fall += dt; pl.y = pl.y0 + pl.fall * pl.fall * 400; }
   }
   updatePlayer(dt);
+  updateChests(dt);
+  updateHazards(dt);
+  if (G.forks.length) updateForks();
+  if (modalOpen || !G) return;
   const p = G.player;
   if (p.y > ROWS * TILE + 40) {
     G.hearts--; renderHearts(); G.streak = 0; renderScore(); toast("You fell. Back to the last banner.", "bad");
@@ -1035,7 +1105,7 @@ function update(dt) {
   for (const tp of G.tips) if (!TIPS_SEEN.has(tp.key) && p.x > tp.x - 5 * TILE) { TIPS_SEEN.add(tp.key); toast(tp.text, null, 6500); }
   if (G.room) { roomUpdate(G.room, dt); if (modalOpen || !G) return; }
   // checkpoints
-  for (const f of G.flags) if (p.x > f.x - 8 && f.x > G.check.x) { if (!f.on) { f.on = true; toast("Banner raised. You'll return here if you fall.", "good"); } G.check = f; }
+  for (const f of G.flags) if (p.x > f.x - 8 && f.x > G.check.x) { if (!f.on) { f.on = true; toast("Banner raised. You'll return here if you fall.", "good"); G.wardReady = true; if (G.d.regen && G.hearts < G.maxH) { G.hearts++; renderHearts(); toast("Iron Tonic: a heart restored.", "good"); } } G.check = f; }
   // signs, zones
   for (const s of G.signs) if (!s.read && overlap(p, s)) { openSign(s); return; }
   let inLeap = null;
@@ -1049,9 +1119,9 @@ function update(dt) {
   if (modalOpen) return;
   // pickups
   for (const pr of G.pearls) if (!pr.taken && Math.hypot(p.x + p.w / 2 - pr.x, p.y + p.h / 2 - pr.y) < 22) { takePearl(pr); return; }
-  for (const po of G.potions) if (!po.taken && Math.hypot(p.x + p.w / 2 - po.x, p.y + p.h / 2 - po.y) < 20) { po.taken = true; if (G.hearts < MAXH) { G.hearts++; renderHearts(); toast("A remedy restores a heart.", "good"); } else addScore(100, po.x, po.y); burst(po.x, po.y, "#ff7a8a", 12); }
+  for (const po of G.potions) if (!po.taken && Math.hypot(p.x + p.w / 2 - po.x, p.y + p.h / 2 - po.y) < 20) { po.taken = true; if (G.hearts < G.maxH) { G.hearts++; renderHearts(); toast("A remedy restores a heart.", "good"); } else addScore(100, po.x, po.y); burst(po.x, po.y, "#ff7a8a", 12); }
   // springs and spikes
-  for (const sp of G.springs) { sp.t -= dt; if (p.vy > 0 && overlap(p, sp) && p.y + p.h - sp.y < 14) { p.vy = -1000; p.pound = 0; p.jumps = 1; p.dashReady = true; sp.t = 0.25; p.y = sp.y - p.h; ring(sp.x + 12, sp.y, G.t.accent); } }
+  for (const sp of G.springs) { sp.t -= dt; if (p.vy > 0 && overlap(p, sp) && p.y + p.h - sp.y < 14) { p.vy = -1000; p.pound = 0; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; sp.t = 0.25; p.y = sp.y - p.h; ring(sp.x + 12, sp.y, G.t.accent); } }
   for (const sk of G.spikes) if (overlap(p, sk)) hurt(p.x + p.w / 2 + (p.vx > 0 ? 10 : -10), true);
   // doors
   for (const d of G.doors) {
@@ -1089,11 +1159,13 @@ function update(dt) {
     } else if (e.kind === "turret") {
       e.cd -= dt;
       if (e.cd <= 0 && Math.abs(p.x - e.x) < 9 * TILE) { e.cd = 2.3; e.recoil = 0.18; const dirx = Math.sign(p.x - e.x) || -1; G.shots.push({ x: e.x + e.w / 2 + dirx * 12, y: e.y + 8, vx: dirx * 180, vy: 0, life: 3.5 }); }
-    } else { e.x = e.bx + Math.sin(e.t * 0.9) * 70; e.y = e.by + Math.sin(e.t * 2.2) * 18; }
+    } else if (e.kind === "fact") { e.x = e.bx + Math.sin(e.t * 0.6) * 36; e.y = e.by + Math.sin(e.t * 1.6) * 10; }
+    else { e.x = e.bx + Math.sin(e.t * 0.9) * 70; e.y = e.by + Math.sin(e.t * 2.2) * 18; }
     if (e.y > ROWS * TILE) e.alive = false;
+    if (e.kind === "fact") { if (overlap(p, e) && (p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { stompFact(e); p.vy = -460; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; } continue; }
     if (overlap(p, e)) {
       if (p.dash > 0) continue;
-      if ((p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { killEnemy(e, p.pound ? "fly" : "squash"); if (!p.pound) { p.vy = keys.jump ? -560 : -430; p.sq = 0.2; } p.jumps = 1; p.dashReady = true; hitstop(0.06); addScore(50, e.x, e.y - 10); }
+      if ((p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { killEnemy(e, p.pound ? "fly" : "squash"); if (!p.pound) { p.vy = keys.jump ? -560 : -430; p.sq = 0.2; } p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; hitstop(0.06); gainXP(3); addScore(50, e.x, e.y - 10); }
       else hurt(e.x + e.w / 2);
     }
   }
@@ -1108,18 +1180,19 @@ function update(dt) {
   if (b) b.flash = Math.max(0, (b.flash || 0) - dt * (b.dying ? 0 : 3.5));
   if (b && !b.dead && !b.dying && G.bossStarted) {
     b.t += dt; b.inv -= dt;
+    const stag = b.stagger > 0; if (stag) b.stagger -= dt;
     const cx = p.x + p.w / 2, bx = b.x + b.w / 2, fast = b.phase === 2 ? 1.45 : 1;
     b.face = cx < bx ? -1 : 1;
-    if (b.phase === 2 && b.inv < 98) {
+    if (b.phase === 2 && b.inv < 98 && !stag) {
       b.spikeT -= dt;
       if (b.spikeT <= 0) { if (b.spike === "down") { b.spike = "warn"; b.spikeT = 0.7; } else if (b.spike === "warn") { b.spike = "up"; b.spikeT = 2.4; } else { b.spike = "down"; b.spikeT = 2.2; } }
     }
     const ax0 = (G.arena.x0 + 1) * TILE, ax1 = (G.arena.x1 - 1) * TILE - b.w;
     if (b.flying) {
-      b.x += clamp(cx - bx, -1, 1) * 60 * fast * dt; b.x = clamp(b.x, ax0, ax1);
+      if (!stag) b.x += clamp(cx - bx, -1, 1) * 60 * fast * dt; b.x = clamp(b.x, ax0, ax1);
       b.y = GR * TILE - b.h - 34 + Math.sin(b.t * 1.6 * fast) * 24;
     } else {
-      b.vx = b.face * (b.inv > 0 ? 20 : 68 * fast);
+      b.vx = stag ? 0 : b.face * (b.inv > 0 ? 20 : 68 * fast);
       const fallV = b.vy;
       b.vy = Math.min(b.vy + 1900 * dt, 900);
       moveX(b, b.vx * dt); b.x = clamp(b.x, ax0, ax1);
@@ -1127,7 +1200,7 @@ function update(dt) {
     }
     b.trail.unshift({ x: bx, y: b.y + b.h * 0.6 }); if (b.trail.length > 40) b.trail.pop();
     b.act -= dt;
-    if (b.act <= 0 && b.inv <= 0) {
+    if (b.act <= 0 && b.inv <= 0 && !stag) {
       b.act = (1.6 + Math.random() * 1.2) / fast; b.attacks++;
       if (!b.flying && Math.random() < (b.phase === 2 ? 0.55 : 0.4)) b.vy = -640;
       else if (b.flying && b.phase === 2 && b.attacks % 2 === 0) {
@@ -1144,7 +1217,7 @@ function update(dt) {
         if (b.spike === "up" && !pounding) { hurt(bx, true); toast("Spikes up: ground-pound to break through.", "bad"); }
         else {
           if (pounding) { b.spike = "down"; b.spikeT = 2.2; G.shake = 0.35; burst(bx, b.y, "#ffffff", 20); }
-          p.vy = -560; p.pound = 0; p.jumps = 1; p.dashReady = true; b.inv = 99; bossRecall(pounding && b.phase === 2); return;
+          p.vy = -560; p.pound = 0; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; b.inv = 99; bossRecall(pounding && b.phase === 2); return;
         }
       } else if (b.inv < 98) hurt(bx);
     }
@@ -1153,7 +1226,20 @@ function update(dt) {
   G.waves = G.waves.filter(w => w.life > 0);
   for (const s of G.shots) {
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-    if (Math.hypot(s.x - (p.x + p.w / 2), s.y - (p.y + p.h / 2)) < 14) { s.life = 0; hurt(s.x); }
+    if (s.friendly) {
+      const bb = G.boss;
+      if (bb && !bb.dead && !bb.dying && s.x > bb.x && s.x < bb.x + bb.w && s.y > bb.y && s.y < bb.y + bb.h) { s.life = 0; staggerBoss(); }
+      for (const e of G.enemies) if (e.alive && e.kind !== "fact" && Math.abs(s.x - (e.x + e.w / 2)) < 16 && Math.abs(s.y - (e.y + e.h / 2)) < 16) { s.life = 0; killEnemy(e, "fly"); addScore(50, e.x, e.y - 10); }
+    }
+    else if (Math.hypot(s.x - (p.x + p.w / 2), s.y - (p.y + p.h / 2)) < (p.dash > 0 ? 20 : 14)) {
+      if (p.dash > 0) {
+        const bb = G.boss, tx = bb && !bb.dead ? bb.x + bb.w / 2 : s.x - s.vx, ty = bb && !bb.dead ? bb.y + bb.h / 2 : s.y - s.vy;
+        const a = Math.atan2(ty - s.y, tx - s.x), sp = Math.hypot(s.vx, s.vy) * 1.6;
+        s.vx = Math.cos(a) * sp; s.vy = Math.sin(a) * sp; s.friendly = true; s.life = 3;
+        ring(s.x, s.y, "#8fd3ff", 200); burst(s.x, s.y, "#8fd3ff", 10); hitstop(0.05); gainXP(5); addScore(40, s.x, s.y - 10);
+        if (!G.toldReflect) { G.toldReflect = true; toast("Reflected! Dashing into a shot sends it back.", "good"); }
+      } else { s.life = 0; hurt(s.x); }
+    }
     if (solid(Math.floor(s.x / TILE), Math.floor(s.y / TILE))) s.life = 0;
   }
   G.shots = G.shots.filter(s => s.life > 0);
@@ -1247,9 +1333,14 @@ function drawBackground() {
       ctx.beginPath(); ctx.ellipse(cx0, cy0, 60 + h2(i, 23) * 50, 9 + h2(i, 24) * 6, 0, 0, 6.283); ctx.ellipse(cx0 + 30, cy0 - 6, 34, 8, 0, 0, 6.283); ctx.fill();
     }
   }
+  lightRays();
   ctx.save(); ctx.translate(0, OFFY);
+  drawSkyline(ctx, t, G.cam + 7000, W, GR * TILE - 96, 0.1, mix(t.far, t.sky[1], 0.5), 1.7);
+  haze(40, GR * TILE, t.sky[1], 0.28);
   drawSkyline(ctx, t, G.cam, W, GR * TILE - 60, 0.2, t.far, 1.4);
+  haze(110, GR * TILE, t.sky[1], 0.22);
   drawSkyline(ctx, t, G.cam, W, GR * TILE - 10, 0.45, t.near, 1);
+  groundMist();
   if (t.river) { ctx.fillStyle = "rgba(90,170,230,0.35)"; ctx.fillRect(0, GR * TILE - 22, W, 14); ctx.fillStyle = "rgba(200,235,255,0.35)"; for (let i = 0; i < 12; i++) { const x = ((i * 97 - G.cam * 0.6 + G.time * 30) % (W + 40) + W + 40) % (W + 40) - 20; ctx.fillRect(x, GR * TILE - 17, 16, 2); } }
   if (t.torches) for (let i = 0; i < 8; i++) { const x = ((i * 260 - G.cam * 0.7) % (W + 260) + W + 260) % (W + 260) - 60, y = GR * TILE - 90; ctx.fillStyle = "#3a3040"; ctx.fillRect(x - 2, y, 4, 18); const fl = 6 + Math.sin(G.time * 12 + i) * 2; const rg = ctx.createRadialGradient(x, y - 4, 1, x, y - 4, 40); rg.addColorStop(0, "rgba(255,190,90,0.55)"); rg.addColorStop(1, "rgba(255,190,90,0)"); ctx.fillStyle = rg; ctx.fillRect(x - 40, y - 44, 80, 80); ctx.fillStyle = "#ffcf6a"; ctx.beginPath(); ctx.ellipse(x, y - 4, 3.5, fl, 0, 0, 6.283); ctx.fill(); }
   ctx.restore();
@@ -1281,24 +1372,7 @@ function label(text, x, y, color, size) {
   ctx.fillStyle = color || "#f4ecd8"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x, y - h / 2 + 4);
 }
 function drawTiles() {
-  const t = G.t, x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
-  for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) {
-    const v = G.tiles[ty * G.W + tx]; if (!v) continue;
-    const X = tx * TILE, Y = ty * TILE;
-    const topOpen = ty === 0 || !G.tiles[(ty - 1) * G.W + tx];
-    if (v === 1 || v === 4) {
-      ctx.fillStyle = t.ground; ctx.fillRect(X, Y, TILE + 0.5, TILE + 0.5);
-      if (h2(tx, ty) > 0.55) { ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(X + h2(tx, ty + 9) * 24, Y + h2(tx + 4, ty) * 24, 5, 3); }
-      if (topOpen) { ctx.fillStyle = t.top; ctx.fillRect(X, Y, TILE + 0.5, 6); ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(X, Y + 6, TILE + 0.5, 2); }
-      if (v === 4) {
-        ctx.strokeStyle = "rgba(255,240,200," + (0.45 + 0.25 * Math.sin(G.time * 3 + tx)) + ")"; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(X + 4, Y + 9); ctx.lineTo(X + 13, Y + 17); ctx.lineTo(X + 10, Y + 27); ctx.moveTo(X + 13, Y + 17); ctx.lineTo(X + 24, Y + 14); ctx.lineTo(X + 29, Y + 24); ctx.stroke();
-      }
-    } else {
-      ctx.fillStyle = t.plat; rr(X + 1, Y + 2, TILE - 2, TILE - 4, 5); ctx.fill(); ctx.fillStyle = t.top; ctx.fillRect(X + 3, Y + 2, TILE - 6, 3);
-      ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(X + 4, Y + 18, TILE - 8, 2);
-    }
-  }
+  drawTerrain();
   if (G.t.water) {
     const prog = clamp((G.player.x - G.startX) / (G.arenaX - G.startX), 0, 1), wy = ROWS * TILE - 40 - prog * 150;
     ctx.fillStyle = "rgba(60,200,220,0.16)"; ctx.fillRect(G.cam, wy, VW, ROWS * TILE - wy + 40);
@@ -1402,10 +1476,11 @@ function drawPlayer() {
   }
   const flick = p.inv > 0 && p.inv < 1.1 && Math.floor(p.inv * 14) % 2;
   if (flick) ctx.globalAlpha = 0.4;
-  drawFlash(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd");
+  drawSprite(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
   ctx.globalAlpha = 1;
 }
 function drawEnemyAnimated(e) {
+  if (e.kind === "fact") { if (e.alive) drawFact(e); return; }
   const d = e.dead;
   if (!d) { drawEnemy(e); return; }
   const k = d.t / 0.9; if (k >= 1) return;
@@ -1480,6 +1555,7 @@ function drawFlag(f) {
 }
 function drawOrb(o) {
   if (o.taken) return;
+  glow(o.x, o.y, 34, G.t.accent, 0.35);
   const y = o.y + Math.sin(G.time * 2 + o.ph) * 4;
   const rg = ctx.createRadialGradient(o.x - 3, y - 3, 1, o.x, y, o.r + 6); rg.addColorStop(0, "#ffffff"); rg.addColorStop(0.35, G.t.accent); rg.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(o.x, y, o.r + 6, 0, 6.283); ctx.fill();
@@ -1488,6 +1564,7 @@ function drawOrb(o) {
 }
 function drawPearl(pr) {
   if (pr.taken) return;
+  glow(pr.x, pr.y, 40, "#cfe8ff", 0.4 + 0.15 * Math.sin(G.time * 3 + pr.x));
   const y = pr.y + Math.sin(G.time * 2.5 + pr.x) * 3;
   const rg = ctx.createRadialGradient(pr.x, y, 2, pr.x, y, 22); rg.addColorStop(0, "rgba(220,240,255,0.6)"); rg.addColorStop(1, "rgba(220,240,255,0)"); ctx.fillStyle = rg; ctx.fillRect(pr.x - 22, y - 22, 44, 44);
   const g = ctx.createLinearGradient(pr.x - 8, y - 8, pr.x + 8, y + 8); g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#d9c8ff"); g.addColorStop(1, "#9fe8ff");
@@ -1585,19 +1662,20 @@ function drawBoss(b) {
 function render() {
   // puzzle rooms: zoom out until the whole room fits, and centre on it
   const zt = G.roomLock ? Math.min(1, STW / ((ROOM_W + 2.5) * TILE * BASESC)) : 1;
-  G.zoom += (zt - G.zoom) * 0.08; if (Math.abs(zt - G.zoom) < 0.002) G.zoom = zt;
+  G.zoom += (zt - G.zoom) * (1 - Math.exp(-FRAME_DT * 5)); if (Math.abs(zt - G.zoom) < 0.002) G.zoom = zt;
   SC = BASESC * G.zoom; VW = STW / SC; VH = STH / SC; OFFY = Math.max(0, VH - ROWS * TILE);
   ctx.setTransform(DPR * SC, 0, 0, DPR * SC, 0, 0);
   const p = G.player;
   const target = G.roomLock ? G.roomLock.x0 + ROOM_W * TILE / 2 - VW / 2 : p.x + p.w / 2 - VW * 0.42 + G.look;
-  G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * 0.1;
+  G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * (1 - Math.exp(-FRAME_DT * 6.5));
   drawBackground();
   const shk = RM ? 0 : G.shake, sx = shk > 0 ? (Math.random() - 0.5) * 8 * shk / 0.3 : 0, sy = shk > 0 ? (Math.random() - 0.5) * 6 * shk / 0.3 : 0;
-  ctx.save(); ctx.translate(-Math.round(G.cam * 10) / 10 + sx, OFFY + sy);
+  ctx.save(); ctx.translate(-G.cam + sx, OFFY + sy);
   if (G.room) roomDrawBack(G.room);
   drawTiles();
   for (const pl of G.plats) drawPlat(pl);
   for (const sk of G.spikes) if (sk.x + sk.w > G.cam && sk.x < G.cam + VW) drawSpikes(sk);
+  drawHazards(); drawForks(); drawChests();
   for (const sp of G.springs) drawSpring(sp);
   for (const f of G.flags) drawFlag(f);
   for (const s of G.signs) drawSign(s);
@@ -1606,11 +1684,25 @@ function render() {
   for (const o of G.orbs) drawOrb(o);
   for (const pr of G.pearls) drawPearl(pr);
   for (const po of G.potions) drawPotion(po);
+  for (const e of G.enemies) if (e.alive && e.x > G.cam - 60 && e.x < G.cam + VW + 60 && e.kind !== "fly") drawShadow(e.x + e.w / 2, e.y + e.h, e.w * 0.55);
   for (const e of G.enemies) if ((e.alive || (e.dead && e.dead.t < 0.9)) && e.x > G.cam - 60 && e.x < G.cam + VW + 60) drawEnemyAnimated(e);
-  if (G.boss && !G.boss.dead) { const b = G.boss; if (b.land > 0) b.land -= 1 / 60; drawFlash(() => drawBoss(b), b.x + b.w / 2, b.y + b.h / 2 - 10, 230, b.flash + (b.act < 0.45 && b.inv <= 0 && !b.dying ? 0.15 * (1 + Math.sin(G.time * 30)) : 0)); }
+  if (G.boss && !G.boss.dead) {
+    const b = G.boss; if (b.land > 0) b.land -= FRAME_DT;
+    drawShadow(b.x + b.w / 2, b.y + b.h, b.w * 0.5);
+    const long = ["wyrm", "serpent"].includes(G.L.boss.shape);
+    drawSprite(() => drawBoss(b), b.x + b.w / 2, b.y + b.h / 2 - 10, long ? 380 : 240, b.flash + (b.act < 0.45 && b.inv <= 0 && !b.dying && !(b.stagger > 0) ? 0.15 * (1 + Math.sin(G.time * 30)) : 0), "#ffffff", "rgba(10,6,18,0.8)");
+    if (b.stagger > 0) { for (let i = 0; i < 4; i++) { const a = G.time * 5 + i * 1.57; bigText("✦", b.x + b.w / 2 + Math.cos(a) * 26, b.y - 12 + Math.sin(a) * 6, 12, "#ffe9a8"); } }
+  }
   for (const w of G.waves) { ctx.fillStyle = G.t.top; ctx.beginPath(); ctx.moveTo(w.x - 12, GR * TILE); ctx.quadraticCurveTo(w.x, GR * TILE - 30, w.x + 12, GR * TILE); ctx.fill(); }
-  for (const s of G.shots) { const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, G.t.enemy); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill(); }
+  for (const s of G.shots) {
+    const c = s.friendly ? "#8fd3ff" : G.t.enemy;
+    glow(s.x, s.y, 22, c, 0.5);
+    const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, c); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = rgba(s.friendly ? "#8fd3ff" : G.t.enemy, 0.35); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.vx * 0.05, s.y - s.vy * 0.05); ctx.stroke();
+  }
+  if (G.portal) glow(G.portal.x, G.portal.y, 70, G.t.accent, 0.5);
   if (G.portal) { const q = G.portal, grow = clamp((G.time - (q.born || 0)) * 2, 0, 1); ctx.save(); ctx.translate(q.x, q.y); ctx.scale(grow, grow); const pg = ctx.createRadialGradient(0, 0, 2, 0, 0, 40); pg.addColorStop(0, "rgba(255,255,255,0.55)"); pg.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = pg; ctx.fillRect(-40, -40, 80, 80); for (let i = 0; i < 3; i++) { ctx.strokeStyle = i === 1 ? G.t.top : G.t.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 18 - i * 4, 30 - i * 6, 0, G.time * (2 + i), G.time * (2 + i) + 4.5); ctx.stroke(); } ctx.restore(); label("Portal", q.x, q.y - 40, G.t.accent); }
+  if (!G.exitT) drawShadow(p.x + p.w / 2, p.y + p.h, 11);
   drawPlayer();
   drawCarried();
   drawChase(G.chase);
@@ -1621,9 +1713,11 @@ function render() {
     ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(0.3, f.grow ? f.r * (1.6 - k * 0.6) : f.r * (0.4 + k * 0.6)), 0, 6.283); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  for (const q of G.pops) { ctx.globalAlpha = clamp(q.life * 1.5, 0, 1); ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe9a8"; ctx.fillText(q.text, q.x, q.y); }
+  for (const q of G.pops) { ctx.globalAlpha = clamp(q.life * 1.5, 0, 1); ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = q.xp ? "#b8e6ff" : "#ffe9a8"; ctx.fillText(q.text, q.x, q.y); }
   ctx.globalAlpha = 1;
   ctx.restore();
+  foreground();
+  vignette();
   // iris wipe in (level start) and out (portal)
   const irisOpen = G.exitT > 0 ? 1 - G.exitT * G.exitT : 1 - Math.pow(1 - G.iris, 3);
   if (irisOpen < 1) {
@@ -1637,13 +1731,16 @@ function render() {
 }
 
 /* ================= loop ================= */
-let lastFrame = performance.now();
+let lastFrame = performance.now(), FRAME_DT = 1 / 60;
 function frame(now) {
   requestAnimationFrame(frame);
   if (!G || $("gameScreen").hidden) return;
-  const dt = clamp((now - lastFrame) / 1000, 0, 1 / 30); lastFrame = now;
+  const dt = clamp((now - lastFrame) / 1000, 0, 1 / 30); lastFrame = now; FRAME_DT = dt || 1 / 60;
   if (G.hitstop > 0 && !modalOpen) { G.hitstop -= dt; G.shake = Math.max(0, G.shake - dt * 0.5); }
-  else if (!modalOpen && !G.done) update(dt);
+  else if (!modalOpen && !G.done) {
+    let rem = dt;
+    while (rem > 1e-6 && G && !modalOpen && !G.done && !(G.hitstop > 0)) { const h = Math.min(rem, 1 / 120); update(h); rem -= h; }
+  }
   else { pressed.jump = pressed.dash = pressed.down = false; }
   if (!G) return;
   G.iris = Math.min(1, G.iris + dt * 1.5);

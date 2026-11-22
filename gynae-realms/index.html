@@ -137,6 +137,27 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: c
   #leapCard ol { grid-template-columns: 1fr 1fr; column-gap: 12px; }
   #hud { padding-top: 6px; }
 }
+.chip.focus { position: relative; overflow: hidden; padding-bottom: 6px; }
+.chip.focus b { color: var(--brass); font-weight: 500; }
+.chip.focus i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: linear-gradient(90deg, #e0b25c, #ff8f50); transition: width .25s ease; }
+.chip.focus.hot { border-color: #ffb347; box-shadow: 0 0 14px rgba(255, 170, 60, .45); }
+.chip.focus.hot b { color: #ffcf7a; }
+.tbar { position: relative; height: 18px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+.tbar i { position: absolute; inset: 0 auto 0 0; width: 100%; background: linear-gradient(90deg, #7fd69a, #e0b25c); transition: width .1s linear; }
+.tbar span { position: relative; display: block; text-align: right; padding-right: 8px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink); }
+.tbar.low i { background: linear-gradient(90deg, #ff8f80, #ff5a4a); }
+.tbar.low { animation: tpulse .5s ease infinite alternate; }
+@keyframes tpulse { to { border-color: #ff8f80; } }
+.statrows { display: flex; flex-direction: column; gap: 8px; }
+.statrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--panel-2); border-radius: 10px; padding: 8px 12px; }
+.statrow .btn { width: 40px; height: 40px; padding: 0; font-size: 20px; }
+.small { font-size: 13px; }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.slot { border: 1px dashed var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.slot.full { border-style: solid; border-color: var(--brass); background: #2f2541; }
+.slot .lbl { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--brass); }
+.inv { display: flex; flex-direction: column; gap: 6px; }
+.invrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding-top: 6px; }
 .opt.cleared { opacity: .35; text-decoration: line-through; }
 .pips { letter-spacing: 1px; color: #8fd3ff; }
 .pips i { font-style: normal; color: #4a4f6a; }
@@ -236,7 +257,7 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
           <h2>Review Shrine</h2>
           <p id="shrineText">Questions you miss come back here on a 1, 3, 7 and 28-day ladder.</p>
         </div>
-        <button type="button" class="btn primary" id="shrineBtn">Enter the shrine</button>
+        <div class="actions"><button type="button" class="btn primary" id="shrineBtn">Enter the shrine</button><button type="button" class="btn" id="charBtn">Character</button></div>
       </div>
       <div class="realms" id="realms"></div>
       <div class="legend">
@@ -244,6 +265,9 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
         <span><b>Leaps of Judgement</b>: jump up onto the platform with the right answer. Wrong ones shatter under you. <b>Gates</b> ask in a dialog.</span>
         <span><b>Insight</b> fills with right answers and pearls (up to 3). Spend one to clear away a wrong option.</span>
         <span><b>Guardians</b> ask open recall, marked out of 2 by Claude. At half health they raise a spike crown and fight harder.</span>
+        <span><b>Grow stronger by learning.</b> XP comes from right answers, solved rooms, pearls, guardian recall, true fact wisps and the Review Shrine. Spend stat points on Vitality, Agility, Might and Wisdom, and collect 18 pieces of equipment from riddle chests and guardians.</span>
+        <span><b>Fact wisps</b> float through each realm carrying a statement. Stomp the true ones; a false one costs a heart. Gates are timed, so think fast.</span>
+        <span><b>Chases</b> hide true-or-false lanes: jump to the high road for TRUE, stay low for FALSE. <b>Dash into a guardian's shot</b> to reflect it and stagger the guardian.</span>
         <span><b>Stars</b>: one for clearing, one for two slips or fewer, one for a guardian average of 1.5 or more. Find all 3 pearls and get 3 stars for rank S.</span>
       </div>
       <p class="store-note" id="storeNote">Loading your progress…</p>
@@ -261,6 +285,7 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
         </div>
         <div class="hud-r">
           <span class="chip mono" id="meterChip" hidden></span>
+          <span class="chip mono focus" id="levelChip" title="Character level and XP"><b>Lv 1</b><i></i></span>
           <span class="chip mono" id="insightChip" title="Insight">Insight</span>
           <span class="chip mono" id="scoreChip">0</span>
           <span class="chip mono" id="slipChip">Slips 0</span>
@@ -614,6 +639,32 @@ const ROOMS = {
     lesson: "Tamoxifen is a prodrug activated by CYP2D6. Paroxetine and fluoxetine block CYP2D6 and weaken it, so use venlafaxine for hot flushes. Systemic oestrogen is out after breast cancer. Its agonist effect on the endometrium means any bleeding must be investigated." }
 };
 
+/* True/false lanes inside each chase: [statement, true?, why]. TRUE is the high road, FALSE the low road. */
+const CHASE_TF = {
+  s1: [["Letrozole is first-line ovulation induction in PCOS.", true, "It beat clomiphene for live births in PPCOS II."], ["A normal pelvic ultrasound rules out PCOS.", false, "PCOS needs 2 of 3 Rotterdam criteria; ovarian morphology is only one."]],
+  s2: [["Diuretics help clear the ascites in OHSS.", false, "They deepen intravascular depletion and haemoconcentration. Avoid them."], ["After MMR, avoid pregnancy for 28 days.", true, "It's a live vaccine: wait 28 days."]],
+  s3: [["The COCP is safe after a previous DVT.", false, "Previous VTE is a contraindication to the combined pill."], ["A ferritin below 30 µg/L means iron deficiency.", true, "Below 30 µg/L confirms it."]],
+  s4: [["The ureter passes under the uterine artery.", true, "Water under the bridge, 1.5–2 cm lateral to the cervix."], ["A normal ultrasound excludes endometriosis.", false, "Superficial peritoneal disease is invisible on ultrasound."]],
+  s5: [["D-dimer helps diagnose PE on day 2 after surgery.", false, "It's raised after any surgery, so it can't rule PE in or out."], ["A provoked VTE is anticoagulated for 3 months.", true, "Three months for a provoked event."]],
+  s6: [["Atropine for symptomatic bradycardia is 600 micrograms IV.", true, "500–600 micrograms, repeated to a maximum of 3 mg."], ["In anaphylaxis, give adrenaline 1 mg IV first.", false, "Give 0.5 mg IM (1:1000) into the thigh. Never 1:1000 IV."]],
+  s7: [["Normal Doppler flow excludes ovarian torsion.", false, "Flow can persist; torsion is a clinical diagnosis."], ["Elective adnexal surgery in pregnancy is best after 14 weeks.", true, "After the corpus luteum phase, while the uterus is still small."]],
+  s8: [["The glycine deficit limit is 1000 mL.", true, "750 mL if elderly or comorbid."], ["Bipolar resection uses glycine.", false, "Bipolar uses isotonic saline (limit 2500 mL); monopolar needs glycine."]],
+  s9: [["The usual tamoxifen dose is 50 mg daily.", false, "It's 20 mg daily."], ["Paroxetine reduces tamoxifen's effect.", true, "It inhibits CYP2D6, so less endoxifen is made."]]
+};
+
+/* Fact wisps: short statements floating through each realm. Stomp the TRUE ones; a FALSE one costs a heart. [statement, true?, why] */
+const FACTS = {
+  s1: [["SHBG is low in PCOS", true, "Insulin suppresses hepatic SHBG, raising free testosterone."], ["Spironolactone is safe in pregnancy", false, "It can feminise a male fetus: reliable contraception is essential."], ["Judge hirsutism treatment at 6 months", true, "Hair follicles cycle slowly."], ["12 follicles per ovary = PCO morphology", false, "The threshold is 20 or more per ovary, or a volume of 10 mL or more."]],
+  s2: [["Hydrosalpinx lowers IVF success", true, "Remove or clip the tube before transfer."], ["Egg collection is 48 h after trigger", false, "It's 34–36 hours after the trigger."], ["Severe OHSS: haematocrit over 0.45", true, "Critical OHSS is over 0.55."], ["NSAIDs are fine for OHSS pain", false, "Avoid them: renal risk in a fluid-depleted patient."]],
+  s3: [["LNG-IUS is first-line for HMB", true, "It's the most effective medical treatment."], ["Ablation suits adenomyosis well", false, "The disease is deep in the muscle, so ablation often fails."], ["Conserve ovaries at hysterectomy under 65", true, "Removing them raises mortality and cardiovascular risk."], ["Danazol is first-line for HMB", false, "It's rarely used now because of androgenic side effects."]],
+  s4: [["Dyschezia suggests endometriosis", true, "Painful defecation is one of the 4 Ds."], ["GnRH agonists need add-back therapy", true, "It prevents bone loss and vasomotor symptoms."], ["Fever is typical of endometriosis", false, "Fever suggests infection such as PID."], ["Peristalsis confirms the ureter", true, "Vermiculation identifies it at laparoscopy."]],
+  s5: [["Palmer's point is left upper quadrant", true, "3 cm below the costal margin, midclavicular line."], ["Treat PE with prophylactic LMWH", false, "Use a treatment dose: 1 mg/kg twice daily or 1.5 mg/kg daily."], ["Warfarin is safe in early pregnancy", false, "Warfarin embryopathy occurs at 6–12 weeks."], ["FVL + previous VTE: antenatal LMWH", true, "Plus 6 weeks postnatally."]],
+  s6: [["Cervical shock causes bradycardia", true, "It's a vagal reflex."], ["Sit a fainting patient upright", false, "Lie her flat with legs raised to restore venous return."], ["Urticaria suggests anaphylaxis", true, "Skin and airway signs with tachycardia point to anaphylaxis."], ["Atropine maximum is 3 mg", true, "Repeat 500–600 microgram doses up to 3 mg."]],
+  s7: [["Tumour markers are reliable in pregnancy", false, "Pregnancy itself raises CA-125, AFP and hCG."], ["Laparoscopy is unsafe in pregnancy", false, "It's safe, ideally in the second trimester."], ["Mifepristone then misoprostol for midtrimester loss", true, "That's the standard medical induction."], ["Corpus luteum out before 10 wk: give progesterone", true, "Support until about 10–12 weeks."]],
+  s8: [["Saline deficit limit is 2500 mL", true, "Bipolar resection uses isotonic saline (1500 mL if frail)."], ["Correct low sodium as fast as possible", false, "No faster than 8–10 mmol/L in 24 hours."], ["Ulipristal is restricted: liver injury", true, "Rare but serious liver injury."], ["Compounded bioidentical creams are advised", false, "Unregulated doses and no proof of endometrial protection."]],
+  s9: [["Tamoxifen raises endometrial cancer risk", true, "About 2–3 times, from its agonist effect on the endometrium."], ["Tibolone is safe after breast cancer", false, "LIBERATE showed increased recurrence."], ["BRCA1: risk-reducing BSO at 35–40", true, "Once childbearing is complete."], ["Atypical hyperplasia: ablation is enough", false, "Up to 40% have hidden cancer: hysterectomy is needed."]]
+};
+
 const DRILL = [{"id":"k-pc1","topic":"pcos","type":"fact","q":"How many Rotterdam criteria make the diagnosis of PCOS?","a":"2 of 3 (oligo/anovulation, hyperandrogenism, polycystic ovaries), once other causes are excluded."},{"id":"k-pc2","topic":"pcos","type":"num","q":"Ultrasound threshold for polycystic ovarian morphology on TVUS?","a":"≥ 20 follicles per ovary and/or ovarian volume ≥ 10 mL."},{"id":"k-pc3","topic":"pcos","type":"num","q":"mFG score that defines hirsutism in the 2023 PCOS guideline?","a":"4–6 or more."},{"id":"k-pc4","topic":"pcos","type":"why","q":"Why is SHBG low in PCOS?","a":"Hyperinsulinaemia suppresses hepatic SHBG production, raising free testosterone."},{"id":"k-pc5","topic":"pcos","type":"fact","q":"Which blood test screens for non-classic CAH?","a":"Early-morning, follicular-phase 17-hydroxyprogesterone (confirm with an ACTH stimulation test)."},{"id":"k-pc6","topic":"pcos","type":"fact","q":"Which blood test can replace ultrasound for the ovarian criterion in adults?","a":"Serum AMH."},{"id":"k-pc7","topic":"pcos","type":"why","q":"Why isn't ultrasound used to diagnose PCOS within 8 years of menarche?","a":"Multifollicular ovaries are normal at that age."},{"id":"k-pc8","topic":"pcos","type":"why","q":"How does spironolactone reduce hirsutism, and why does it need contraception?","a":"It blocks androgen receptors (and reduces androgen synthesis); it can feminise a male fetus."},{"id":"k-pc9","topic":"pcos","type":"fact","q":"Which antiandrogen carries a dose-dependent meningioma risk?","a":"Cyproterone acetate."},{"id":"k-pc10","topic":"pcos","type":"num","q":"Minimum trial of hormonal treatment before judging hirsutism response?","a":"6 months."},{"id":"k-pc11","topic":"pcos","type":"why","q":"Main mechanism of metformin in PCOS?","a":"Reduces hepatic gluconeogenesis and improves insulin sensitivity, lowering insulin and androgens."},{"id":"k-pc12","topic":"pcos","type":"num","q":"How long must the COCP be stopped before androgen testing?","a":"At least 3 months."},{"id":"k-f1","topic":"fert","type":"num","q":"Definition of infertility by time?","a":"No pregnancy after 12 months of regular unprotected sex; 6 months if she is ≥ 35."},{"id":"k-f2","topic":"fert","type":"why","q":"How does letrozole induce ovulation?","a":"Aromatase inhibition lowers oestrogen, reducing negative feedback so FSH rises."},{"id":"k-f3","topic":"fert","type":"why","q":"How does clomiphene induce ovulation, and what is its main downside?","a":"It blocks hypothalamic oestrogen receptors so FSH rises; its anti-oestrogenic effect thins the endometrium and thickens cervical mucus."},{"id":"k-f4","topic":"fert","type":"trial","q":"PPCOS II: live birth rates with letrozole vs clomiphene?","a":"27.5% vs 19.1% (Legro, NEJM 2014)."},{"id":"k-f5","topic":"fert","type":"num","q":"Letrozole starting dose and cycle days?","a":"2.5 mg daily on days 3–7, increasing to a maximum of 7.5 mg."},{"id":"k-f6","topic":"fert","type":"num","q":"Definition of clomiphene resistance?","a":"No ovulation at 150 mg daily."},{"id":"k-f7","topic":"fert","type":"num","q":"Mid-luteal progesterone level that confirms ovulation?","a":"Above about 30 nmol/L, about 7 days before the expected period."},{"id":"k-f8","topic":"fert","type":"num","q":"WHO 2021 lower limits for semen volume and sperm concentration?","a":"1.4 mL and 16 million/mL."},{"id":"k-f9","topic":"fert","type":"num","q":"WHO 2021 lower limits for progressive motility and normal morphology?","a":"30% progressive motility; 4% normal forms."},{"id":"k-f10","topic":"fert","type":"fact","q":"What does AMH reflect, and what does it not predict?","a":"Ovarian reserve (the antral follicle pool); it doesn't predict natural fertility."},{"id":"k-f11","topic":"fert","type":"fact","q":"Which gonadotrophin protocol is used for ovulation induction in PCOS?","a":"Low-dose step-up FSH with ultrasound monitoring, cancelling if too many follicles grow."},{"id":"k-f12","topic":"fert","type":"fact","q":"Advantage and drawbacks of laparoscopic ovarian drilling?","a":"No multiple-pregnancy or OHSS risk; drawbacks are surgery, adhesions and reduced ovarian reserve."},{"id":"k-h1","topic":"hyper","type":"fact","q":"WHO classification of endometrial hyperplasia?","a":"Hyperplasia without atypia, and atypical hyperplasia (EIN)."},{"id":"k-h2","topic":"hyper","type":"num","q":"Risk of hyperplasia without atypia progressing to cancer?","a":"Under 5% over 20 years."},{"id":"k-h3","topic":"hyper","type":"fact","q":"First-line treatment for hyperplasia without atypia, and minimum duration?","a":"LNG-IUS for at least 6 months."},{"id":"k-h4","topic":"hyper","type":"num","q":"Surveillance and discharge criteria for hyperplasia without atypia?","a":"Biopsy at least every 6 months; discharge after 2 consecutive negative biopsies."},{"id":"k-h5","topic":"hyper","type":"num","q":"Concurrent endometrial cancer rate with atypical hyperplasia?","a":"Up to about 40% (about 43% in GOG 167)."},{"id":"k-h6","topic":"hyper","type":"num","q":"Biopsy interval for fertility-sparing treatment of atypical hyperplasia?","a":"Every 3 months until 2 consecutive negative biopsies."},{"id":"k-h7","topic":"hyper","type":"fact","q":"If she declines an LNG-IUS for hyperplasia without atypia, what do you use?","a":"Continuous oral progestogen (MPA 10–20 mg or norethisterone 10–15 mg daily), not cyclical."},{"id":"k-h8","topic":"hyper","type":"fact","q":"Who needs annual biopsies after discharge from hyperplasia surveillance?","a":"Those at higher relapse risk: BMI ≥ 35 or treated with oral progestogens."},{"id":"k-p1","topic":"precon","type":"num","q":"Standard and high-dose folic acid, and who needs the high dose?","a":"0.5 mg daily; 5 mg if BMI ≥ 30, diabetes, previous NTD or on antiepileptics."},{"id":"k-p2","topic":"precon","type":"num","q":"Iodine supplement dose before and during pregnancy?","a":"150 µg daily."},{"id":"k-p3","topic":"precon","type":"num","q":"After MMR or varicella vaccine, how long to avoid pregnancy?","a":"28 days."},{"id":"k-p4","topic":"precon","type":"num","q":"Aspirin for pre-eclampsia prevention: dose and timing?","a":"150 mg at night, started before 16 weeks and continued to 36 weeks."},{"id":"k-p5","topic":"precon","type":"fact","q":"Which smoking-cessation drugs should be avoided in pregnancy?","a":"Varenicline and bupropion; NRT is acceptable."},{"id":"k-p6","topic":"precon","type":"fact","q":"Which conditions are covered by preconception carrier screening in Australia?","a":"Cystic fibrosis, spinal muscular atrophy and fragile X."},{"id":"k-p7","topic":"precon","type":"fact","q":"Which antiepileptic should be avoided in women who may become pregnant?","a":"Sodium valproate."},{"id":"k-o1","topic":"ohss","type":"why","q":"Key mediator of the capillary leak in OHSS?","a":"VEGF from hCG-stimulated granulosa-lutein cells."},{"id":"k-o2","topic":"ohss","type":"num","q":"Early vs late OHSS: timing and driver?","a":"Early within about 7 days of the trigger (the trigger's hCG); late ≥ 10 days (pregnancy hCG)."},{"id":"k-o3","topic":"ohss","type":"num","q":"Haematocrit thresholds for severe and critical OHSS?","a":"Severe > 0.45; critical > 0.55."},{"id":"k-o4","topic":"ohss","type":"num","q":"Biochemical markers of severe OHSS besides haematocrit?","a":"Na < 135, K > 5, albumin < 35 g/L."},{"id":"k-o5","topic":"ohss","type":"why","q":"Why avoid NSAIDs in OHSS?","a":"Risk of renal impairment in a hypovolaemic patient."},{"id":"k-o6","topic":"ohss","type":"why","q":"Why avoid diuretics in OHSS?","a":"They worsen intravascular depletion and haemoconcentration, raising thrombosis and renal risk."},{"id":"k-o7","topic":"ohss","type":"fact","q":"Single most effective OHSS prevention in an IVF cycle?","a":"A GnRH agonist trigger in an antagonist cycle, with freeze-all."},{"id":"k-o8","topic":"ohss","type":"why","q":"How does cabergoline reduce OHSS risk?","a":"As a dopamine agonist it blocks VEGF receptor-2 signalling, reducing vascular permeability."},{"id":"k-o9","topic":"ohss","type":"num","q":"OHSS thromboprophylaxis: dose and duration if pregnant?","a":"Enoxaparin 40 mg daily, continued to the end of the first trimester."},{"id":"k-o10","topic":"ohss","type":"fact","q":"Name three risk factors for OHSS.","a":"Any three of: PCOS or high AMH, young age, many follicles or high oestradiol, previous OHSS, hCG trigger, pregnancy."},{"id":"k-m1","topic":"hmb","type":"num","q":"Objective definition of heavy menstrual bleeding?","a":"Loss of more than 80 mL per cycle."},{"id":"k-m2","topic":"hmb","type":"fact","q":"What does PALM-COEIN stand for?","a":"Polyp, Adenomyosis, Leiomyoma, Malignancy/hyperplasia; Coagulopathy, Ovulatory, Endometrial, Iatrogenic, Not yet classified."},{"id":"k-m3","topic":"hmb","type":"why","q":"Mechanism of tranexamic acid?","a":"Antifibrinolytic: blocks the lysine-binding sites on plasminogen."},{"id":"k-m4","topic":"hmb","type":"why","q":"How does mefenamic acid reduce menstrual loss?","a":"COX inhibition lowers endometrial prostaglandins (it also eases dysmenorrhoea)."},{"id":"k-m5","topic":"hmb","type":"why","q":"How does a GnRH agonist shrink fibroids?","a":"After an initial flare, pituitary desensitisation produces a hypo-oestrogenic state."},{"id":"k-m6","topic":"hmb","type":"fact","q":"FIGO fibroid types 0, 1 and 2?","a":"0 pedunculated intracavitary; 1 submucosal < 50% intramural; 2 submucosal ≥ 50% intramural."},{"id":"k-m7","topic":"hmb","type":"fact","q":"Which fibroid degeneration causes pain in pregnancy, and how is it managed?","a":"Red (carneous) degeneration, usually 2nd trimester; analgesia and supportive care."},{"id":"k-m8","topic":"hmb","type":"trial","q":"What did the FEMME trial show?","a":"Myomectomy gave better quality of life at 2 years than uterine artery embolisation."},{"id":"k-m9","topic":"hmb","type":"fact","q":"What is post-embolisation syndrome?","a":"Pain, fever, nausea and a raised WCC after UAE, without infection."},{"id":"k-m10","topic":"hmb","type":"fact","q":"Which features raise suspicion of leiomyosarcoma?","a":"Rapid growth, especially after menopause, and an irregular, heterogeneous mass on MRI."},{"id":"k-m11","topic":"hmb","type":"num","q":"Ferritin level indicating iron deficiency?","a":"Below 30 µg/L."},{"id":"k-y1","topic":"hyst","type":"num","q":"Fluid deficit limits for hypotonic media such as glycine?","a":"1,000 mL; 750 mL if elderly or comorbid."},{"id":"k-y2","topic":"hyst","type":"num","q":"Fluid deficit limits for isotonic saline?","a":"2,500 mL; 1,500 mL if elderly or comorbid."},{"id":"k-y3","topic":"hyst","type":"why","q":"Why does monopolar resection need glycine or sorbitol rather than saline?","a":"Saline conducts electricity and disperses the current; bipolar instruments can use saline."},{"id":"k-y4","topic":"hyst","type":"why","q":"Why does glycine overload cause visual disturbance and confusion?","a":"Glycine is an inhibitory retinal neurotransmitter; hyponatraemia and ammonia from its metabolism cause encephalopathy."},{"id":"k-y5","topic":"hyst","type":"num","q":"Maximum rate of sodium correction in hyponatraemia?","a":"8–10 mmol/L in 24 hours."},{"id":"k-y6","topic":"hyst","type":"fact","q":"Perforation at hysteroscopy: when do you need a laparoscopy?","a":"If energy or suction was used, or it is lateral or bleeding; a blunt fundal perforation can be observed."},{"id":"k-y7","topic":"hyst","type":"fact","q":"Commonest cause of Asherman's syndrome?","a":"Curettage of a recently pregnant uterus (postpartum or after miscarriage)."},{"id":"k-y8","topic":"hyst","type":"fact","q":"Gold-standard test for Asherman's syndrome?","a":"Hysteroscopy."},{"id":"k-my1","topic":"myo","type":"why","q":"How does vasopressin reduce bleeding at myomectomy, and what is its main danger?","a":"V1-mediated vasoconstriction; intravascular injection causes bradycardia, hypertension or cardiac arrest."},{"id":"k-my2","topic":"myo","type":"num","q":"Pre-op misoprostol for myomectomy: dose and timing?","a":"400 µg vaginally (or rectally) about 1 hour before surgery."},{"id":"k-my3","topic":"myo","type":"num","q":"Risk of uterine rupture in pregnancy after myomectomy?","a":"About 0.5–1%."},{"id":"k-my4","topic":"myo","type":"num","q":"Risk of conversion to hysterectomy at myomectomy?","a":"About 1%."},{"id":"k-my5","topic":"myo","type":"num","q":"Where does the ureter pass relative to the cervix and uterine artery?","a":"About 1.5–2 cm lateral to the cervix, under the uterine artery."},{"id":"k-my6","topic":"myo","type":"why","q":"Downside of a pre-op GnRH agonist before myomectomy?","a":"It blurs the cleavage plane and can hide small fibroids, raising recurrence."},{"id":"k-my7","topic":"myo","type":"num","q":"How long to wait before conceiving after myomectomy?","a":"About 3–6 months."},{"id":"k-my8","topic":"myo","type":"why","q":"Why avoid posterior uterine incisions at myomectomy?","a":"They cause more adhesions to bowel, tubes and ovaries."},{"id":"k-po1","topic":"postop","type":"num","q":"Daily maintenance fluid and electrolytes (NICE)?","a":"Water 25–30 mL/kg; Na, K and Cl about 1 mmol/kg each; glucose 50–100 g."},{"id":"k-po2","topic":"postop","type":"fact","q":"AXR finding that favours ileus over obstruction?","a":"Gas throughout small and large bowel with no transition point."},{"id":"k-po3","topic":"postop","type":"fact","q":"When does an unrecognised thermal bowel injury usually present?","a":"Several days later (often day 3–7), with peritonitis or sepsis."},{"id":"k-po4","topic":"postop","type":"fact","q":"What is the lethal triad of haemorrhage?","a":"Hypothermia, acidosis and coagulopathy."},{"id":"k-po5","topic":"postop","type":"num","q":"ATLS class III haemorrhage: blood loss and heart rate?","a":"30–40% of blood volume; HR 120–140 with falling BP."},{"id":"k-po6","topic":"postop","type":"fact","q":"Classic warning sign of wound dehiscence?","a":"Serosanguinous discharge, usually around days 5–8."},{"id":"k-po7","topic":"postop","type":"fact","q":"Which electrolyte disturbance commonly prolongs ileus?","a":"Hypokalaemia (also hypomagnesaemia and hyponatraemia)."},{"id":"k-u1","topic":"ureter","type":"fact","q":"Three common sites of ureteric injury at hysterectomy?","a":"Pelvic brim (infundibulopelvic ligament), under the uterine artery, and the vaginal angle."},{"id":"k-u2","topic":"ureter","type":"fact","q":"How do you confirm a suspected bladder injury during surgery?","a":"Retrograde fill with dye such as methylene blue, ± cystoscopy."},{"id":"k-u3","topic":"ureter","type":"num","q":"Catheter duration after primary repair of a bladder dome injury?","a":"About 7–14 days, often with a cystogram before removal."},{"id":"k-u4","topic":"ureter","type":"fact","q":"How do you confirm leaking fluid is urine?","a":"Its creatinine is far higher than serum creatinine."},{"id":"k-u5","topic":"ureter","type":"fact","q":"Best imaging for a suspected ureteric injury?","a":"CT urogram with a delayed excretory phase."},{"id":"k-u6","topic":"ureter","type":"fact","q":"Repair for a distal (lower-third) ureteric injury?","a":"Ureteroneocystostomy ± psoas hitch or Boari flap."},{"id":"k-u7","topic":"ureter","type":"num","q":"When and how does a vesicovaginal fistula after hysterectomy present?","a":"About 1–3 weeks later, with continuous vaginal leakage of urine."},{"id":"k-u8","topic":"ureter","type":"fact","q":"Bedside test for a vesicovaginal fistula?","a":"Three-swab (tampon) test with dye instilled into the bladder."}];
 </script>
 <script>
@@ -664,10 +715,12 @@ function mergeInto(src) {
   if (!src) return;
   for (const key of ["stars", "clears", "best", "pearls"]) for (const [k, v] of Object.entries(src[key] || {})) P[key][k] = Math.max(P[key][k] || 0, v);
   for (const [k, v] of Object.entries(src.srs || {})) if (!P.srs[k] || (v.at || 0) > (P.srs[k].at || 0)) P.srs[k] = v;
+  const rank = c => c ? c.level * 1e6 + c.xp + c.items.length : -1;
+  if (src.char && rank(src.char) > rank(P.char)) P.char = src.char;
 }
 function save() {
   P.updated = Date.now();
-  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, updated: P.updated };
+  const body = { stars: P.stars, clears: P.clears, best: P.best, pearls: P.pearls, srs: P.srs, char: P.char || null, updated: P.updated };
   lsWrite(body);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -693,7 +746,7 @@ async function initCaps() {
       save();
     }
   } catch (e) {}
-  renderStoreNote(); renderMap();
+  renderStoreNote(); renderMap(); renderLevelChip();
 }
 function renderStoreNote() {
   $("storeNote").textContent = storeMode === "cloud" ? "Your stars, pearls and review schedule are saved privately to your account, so they follow you to your phone."
@@ -748,7 +801,7 @@ function openBriefing(L) {
       el("h3", { text: "What you'll cover" }),
       el("div", { class: "chunks" }, ...L.chunks.map(c => el("span", { text: c }))),
       notes.length ? el("div", { class: "note" }, el("b", { text: "Updated from your notes: " }), notes.map(n => n.now.split(";")[0]).join(" · ")) : null,
-      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". Puzzle room: " + ROOMS[L.id].title + " (press ↓ on the ground to use levers and carry items). ",
+      el("p", { class: "muted" }, "Guardian: " + L.boss.name + ". Chase: " + L.chase.name + ". Puzzle room: " + ROOMS[L.id].title + " (press ↓ on the ground to use levers and carry items). Gates are timed, the chase hides true-or-false lanes, and fact wisps float about: stomp only the true ones. A riddle chest and the guardian each hold equipment (C opens your character). ",
         el("span", { class: "kbd", text: "← →" }), " move, ", el("span", { class: "kbd", text: "Space" }), " jump (twice for a double jump, against a wall to wall-jump), ",
         el("span", { class: "kbd", text: "Shift" }), " or ", el("span", { class: "kbd", text: "X" }), " dash, ", el("span", { class: "kbd", text: "↓" }), " ground pound, ",
         el("span", { class: "kbd", text: "H" }), " spend Insight at a leap, ", el("span", { class: "kbd", text: "E" }), " reread a sign. On a phone, use the buttons under the game and turn it sideways."),
@@ -813,6 +866,19 @@ function askGate(item, kicker) {
       p.append(box);
       const tail = el("div", { class: "actions" });
       const checkBtn = el("button", { type: "button", class: "btn primary", text: "Check", disabled: "", onclick: () => finish(picked) });
+      // a countdown during a run: answer before it empties
+      let timer = null, tLeft = 0;
+      const timed = !!(G && !G.done), tTotal = Math.round((item.panel ? 45 : multi ? 40 : 30) + (G && G.d ? G.d.timer : 0));
+      if (timed) {
+        const fill = el("i"), secs = el("span", { text: tTotal + "s" }), bar = el("div", { class: "tbar" }, fill, secs);
+        p.insertBefore(bar, p.children[1]);
+        const t0 = performance.now(); tLeft = tTotal;
+        timer = setInterval(() => {
+          tLeft = tTotal - (performance.now() - t0) / 1000;
+          fill.style.width = Math.max(0, tLeft / tTotal * 100) + "%"; secs.textContent = Math.max(0, Math.ceil(tLeft)) + "s"; bar.classList.toggle("low", tLeft < 7);
+          if (tLeft <= 0) finish(multi ? picked : new Set(), true);
+        }, 100);
+      }
       if (multi) tail.append(checkBtn);
       let hintBtn = null;
       const wrongLeft = () => order.filter(oi => !ans.has(oi) && !cleared.has(oi) && !picked.has(oi));
@@ -835,8 +901,10 @@ function askGate(item, kicker) {
         if ((e.key === "h" || e.key === "H") && hintBtn && !hintBtn.disabled) { hintBtn.click(); return true; }
         return false;
       };
-      function finish(sel) {
-        const ok = sel.size === ans.size && [...sel].every(x => ans.has(x));
+      function finish(sel, timeout) {
+        if (timer) { clearInterval(timer); timer = null; }
+        const ok = !timeout && sel.size === ans.size && [...sel].every(x => ans.has(x));
+        if (G) G.quick = ok && timed ? Math.max(0, tLeft / tTotal) : 0;
         btns.forEach((b, n) => {
           const oi = order[n]; b.disabled = true;
           if (ans.has(oi) && sel.has(oi)) b.classList.add("right");
@@ -845,7 +913,7 @@ function askGate(item, kicker) {
         });
         tail.remove();
         const why = el("div", { class: "why " + (ok ? "good" : "bad") },
-          el("span", { class: "verdict " + (ok ? "good" : "bad"), text: ok ? "Correct. The way opens." : "Not quite. You lose a heart." }),
+          el("span", { class: "verdict " + (ok ? "good" : "bad"), text: ok ? "Correct. The way opens." + (G && G.quick > 0.5 ? " Quick answer!" : "") : timeout ? "Out of time. You lose a heart." : "Not quite. You lose a heart." }),
           multi && !ok ? el("p", { text: "Answer: " + item.a.map(i => item.opts[i]).join("; ") + "." }) : null,
           el("p", { text: item.why }));
         p.append(why);
@@ -954,7 +1022,7 @@ async function runShrine() {
     let ok;
     if (it.kind === "gate") ok = await askGate(it, kick);
     else ok = (await askRecall(it, kick, ["Remembered.", "Partly there.", "Not yet."])) === 2;
-    if (ok) { srsHit(it.id); right++; } else srsMiss(it.id);
+    if (ok) { srsHit(it.id); right++; gainXP(30); } else srsMiss(it.id);
   }
   showModal(p => p.append(el("span", { class: "kicker", text: "Review Shrine" }), el("h2", { text: right + " of " + ids.length + " remembered" }),
     el("p", { class: "lore", text: "Remembered questions move up the ladder and come back later. The rest return tomorrow." }),
@@ -973,6 +1041,7 @@ addEventListener("keydown", e => {
   if (k) { press(k); e.preventDefault(); }
   if (e.code === "KeyE") { if (nearSign) openSign(nearSign); }
   if (e.code === "KeyH") useLeapInsight();
+  if (e.code === "KeyC" && !modalOpen) openCharacter(closeModal);
   if (e.code === "KeyR" && G.room && G.room.inside) roomReset(G.room);
   if (e.code === "Escape" || e.code === "KeyP") openPause();
 });
@@ -993,7 +1062,8 @@ const TIPS_SEEN = new Set();
 function buildLevel(L) {
   const R = rng(hashStr(L.id + "realm-v2"));
   const cols = [];
-  const B = { plats: [], ev: [], spawns: [], springs: [], spikes: [], pearls: [], potions: [], tips: [] };
+  const B = { plats: [], ev: [], spawns: [], springs: [], spikes: [], pearls: [], potions: [], tips: [], pulses: [], droppers: [], chests: [] };
+  const facts = shuffle((FACTS[L.id] || []).slice(), R); let factN = 0;
   let mode = "normal", fillerN = 0, chimneys = 0, potions = 0, checks = 0;
   const X = () => cols.length;
   const col = top => { const c = new Uint8Array(ROWS); if (top >= 0) for (let y = top; y < ROWS; y++) c[y] = 1; cols.push(c); return c; };
@@ -1027,6 +1097,9 @@ function buildLevel(L) {
         tip(x, "chimney", "Wall jump: slide down a wall, then jump to kick off it. Zig-zag up the shaft, holding towards the next wall.");
         break;
       }
+      case "pulse": { flat(8); B.pulses.push({ x: (x + 2) * TILE, y: GR * TILE - 16, w: 4 * TILE, h: 16, per: 1.9, ph: R() * 1.9 }); tip(x, "pulse", "Pulse spikes rise on a rhythm. Watch them, then cross while they're down."); break; }
+      case "drop": { flat(8); for (let k = 0; k < 2; k++) B.droppers.push({ x: (x + 2 + k * 3) * TILE + 16, y: 46 + k * 14 }); tip(x, "drop", "Loose rocks shake, then fall when you pass beneath. Keep moving."); break; }
+      case "chest": { flat(9); block(x + 1, GR - 3, 2); block(x + 4, GR - 6, 3); B.chests.push({ x: (x + 5) * TILE + 16, y: (GR - 6) * TILE }); tip(x, "chest", "A riddle chest sits up high. Stand beside it and press ↓, then answer to open it."); break; }
       case "pocket": { flat(2); const s = X(); for (let k = 0; k < 3; k++) { const c = col(GR); c[GR] = 4; c[GR + 1] = 0; } flat(2); B.pearls.push({ x: (s + 1) * TILE + 16, y: (GR + 1) * TILE + 16 }); tip(s, "pocket", "Cracked floor: jump, then press down to ground-pound through it. Something glints below."); break; }
       case "high": { flat(8); block(x + 1, GR - 3, 3); block(x + 5, GR - 6, 2); B.pearls.push({ x: (x + 6) * TILE, y: (GR - 7) * TILE + 6 }); tip(x, "high", "A pearl sits high above. Double jump from the ledge."); break; }
       case "gap": { flat(1); const s = X(); pit(7); oneway(s + 3, GR - 1, 1, "crumble"); B.pearls.push({ x: (s + 3) * TILE + 16, y: (GR - 4) * TILE }); flat(2); tip(s, "gap", "Wide gap: double jump and dash (Shift or X) to cross. The pearl hangs over the middle."); break; }
@@ -1035,11 +1108,12 @@ function buildLevel(L) {
   function filler(len) {
     fillerN++;
     const start = X();
-    const pearlKinds = { 2: "pocket", 4: "high", 7: "gap" };
+    const pearlKinds = { 2: "pocket", 4: "high", 6: "chest", 7: "gap" };
     if (pearlKinds[fillerN] && mode !== "chase") feature(pearlKinds[fillerN]);
+    if ([1, 3, 5, 8].includes(fillerN) && mode === "normal" && factN < facts.length) { flat(5); spawn(X() - 3, GR, "fact:" + factN); factN++; }
     const pool = mode === "calm" ? ["flat", "flat", "step", "floats"]
-      : mode === "chase" ? ["pit", "crumble", "spikes", "floats", "spring", "flat", "step", "pit", "spikes"]
-      : ["flat", "pit", "step", "floats", "mover", "crumble", "spikes", "spring", "chimney", "flat", "step"];
+      : mode === "chase" ? ["pit", "crumble", "spikes", "floats", "spring", "flat", "step", "pit", "pulse"]
+      : ["flat", "pit", "step", "floats", "mover", "crumble", "spikes", "spring", "chimney", "flat", "step", "pulse", "drop"];
     while (X() - start < len) {
       let k = pool[Math.floor(R() * pool.length)];
       if (k === "chimney" && (chimneys >= 2 || fillerN < 2)) k = "floats";
@@ -1050,11 +1124,27 @@ function buildLevel(L) {
   function chase() {
     flat(3);
     const x0 = X();
-    mode = "chase"; filler(44); mode = "normal";
+    mode = "chase"; filler(10); fork(0); filler(10); fork(1); filler(8); mode = "normal";
     flat(2); const x1 = X();
     B.ev.push({ type: "chase", x0, x1 });
     B.ev.push({ type: "check", x: X() }); flat(3);
     puzzleRoom();
+  }
+  /* True/false fork: TRUE = high road on stone, FALSE = low road beneath. The wrong lane ends in a solid veil (tile 5), the right one in a passable veil (tile 6). */
+  function fork(k) {
+    const tf = (CHASE_TF[L.id] || [])[k]; if (!tf) return;
+    flat(3);
+    const a = X();
+    col(GR);
+    const st = col(GR); st[GR - 2] = 2;
+    col(GR);
+    for (let i = 0; i < 9; i++) { const c = col(GR); c[GR - 4] = 2; }
+    const v = col(GR);
+    for (let y = 0; y <= GR - 5; y++) v[y] = tf[1] ? 6 : 5;
+    v[GR - 4] = 2;
+    for (let y = GR - 3; y <= GR - 1; y++) v[y] = tf[1] ? 5 : 6;
+    flat(4);
+    B.ev.push({ type: "fork", x0: a, vx: a + 12, tf });
   }
   function puzzleRoom() {
     const g = ROOM_GEOM[L.id]; if (!g) return;
@@ -1114,7 +1204,7 @@ function buildLevel(L) {
   const W = cols.length, tiles = new Uint8Array(W * ROWS);
   cols.forEach((c, x) => { for (let y = 0; y < ROWS; y++) tiles[y * W + x] = c[y]; });
   for (let y = 0; y < ROWS; y++) tiles[y * W + W - 1] = 1;
-  return { W, tiles, ...B, arena: { x0: ax, x1: endX } };
+  return { W, tiles, ...B, facts, arena: { x0: ax, x1: endX } };
 }
 
 /* ================= game state ================= */
@@ -1125,8 +1215,9 @@ function startLevel(L) {
   const pearlFacts = shuffle(L.boss.recall.filter(id => QB[id]), R);
   G = {
     L, t: L.theme, W: B.W, tiles: B.tiles, dyn: new Uint8Array(B.W), arena: B.arena,
-    player: { x: 1.2 * TILE, y: 0, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0, jumps: 1, wall: 0, lock: 0, dash: 0, dashReady: true, dashCd: 0, pound: 0, hang: 0, onPlat: null, sq: 0, stepT: 0, blink: 2, spin: 0, cape: null, hflash: 0 },
-    hearts: MAXH, insight: 1, score: 0, streak: 0, bestStreak: 0, pearlsGot: 0,
+    player: { x: 1.2 * TILE, y: 0, w: 18, h: 28, vx: 0, vy: 0, face: 1, ground: false, coyote: 0, buf: 0, inv: 0, anim: 0, jumps: 1, wall: 0, lock: 0, dash: 0, dashes: 1, dashCd: 0, pound: 0, hang: 0, onPlat: null, sq: 0, stepT: 0, blink: 2, spin: 0, cape: null, hflash: 0 },
+    hearts: 5, insight: 1, score: 0, streak: 0, bestStreak: 0, pearlsGot: 0,
+    pulses: B.pulses, droppers: B.droppers.map(d => ({ ...d, y0: d.y, state: "hang", t: 0, vy: 0 })), forks: [],
     enemies: [], doors: [], signs: [], orbs: [], flags: [], zones: {}, shots: [], waves: [], fx: [], pops: [], trail: [],
     plats: B.plats.map(p => ({ ...p, x0: p.x, y0: p.y, t: 0, dx: 0 })), springs: B.springs, spikes: B.spikes, tips: B.tips,
     pearls: B.pearls.map((p, i) => ({ ...p, taken: false, fact: pearlFacts[i % pearlFacts.length] })), potions: B.potions,
@@ -1135,6 +1226,9 @@ function startLevel(L) {
     startX: 0, bossStarted: false, done: false
   };
   G.player.y = GR * TILE - G.player.h;
+  G.d = derived(); G.maxH = G.d.maxH; G.hearts = G.maxH; G.insight = Math.min(G.d.maxI, G.d.startI); G.wardReady = true;
+  G.player.jumps = G.d.airJumps; G.player.dashes = G.d.airDashes;
+  G.chests = B.chests.map(c => ({ ...c, state: "locked", t: 0, asked: [] })); G.loot = null;
   for (const e of B.ev) {
     if (e.type === "check") G.flags.push({ x: e.x * TILE + 8, y: GR * TILE, on: !!e.start });
     else if (e.type === "sign") G.signs.push({ x: e.x * TILE + 4, y: GR * TILE - 34, w: 26, h: 34, seg: e.seg, read: false });
@@ -1145,17 +1239,20 @@ function startLevel(L) {
       if (e.kind === "room" && G.room) G.room.door = d;
     }
     else if (e.type === "room") G.room = makeRoom(L, e.x0, e.x1);
+    else if (e.type === "fork") G.forks.push({ x0: e.x0 * TILE, vx: e.vx * TILE, tf: e.tf, resolved: false, wrong: false, flash: 0 });
     else if (e.type === "zone") G.zones[e.gid] = { gid: e.gid, seg: e.seg, kind: e.kind, x0: e.x0 * TILE, x1: e.x1 * TILE, intro: false, got: 0, total: e.kind === "pick" ? e.seg.good.length : 1, done: false, wrong: false };
     else if (e.type === "orb") G.orbs.push({ x: e.x * TILE + 16, y: e.row * TILE - 30, r: 11, gid: e.gid, ...e.item, taken: false, ph: Math.random() * 6 });
     else if (e.type === "chase") G.chase = { x0: e.x0 * TILE, x1: e.x1 * TILE, wx: (e.x0 - 8) * TILE, active: false, done: false, ...L.chase };
     else if (e.type === "boss") G.bossX = e.x * TILE;
   }
   G.check = G.flags[0];
+  clearChunks(); forkShown = null; renderLevelChip();
   for (const s of B.spawns) {
     const base = { alive: true, t: Math.random() * 6 };
     if (s.kind === "walk") G.enemies.push({ ...base, kind: "walk", x: s.x * TILE + 4, y: s.row * TILE - 22, w: 24, h: 22, vx: -48, vy: 0 });
     else if (s.kind === "hopper") G.enemies.push({ ...base, kind: "hopper", x: s.x * TILE + 4, y: s.row * TILE - 20, w: 22, h: 20, vx: 0, vy: 0, jt: 1 + Math.random(), grounded: false });
     else if (s.kind === "turret") G.enemies.push({ ...base, kind: "turret", x: s.x * TILE + 4, y: s.row * TILE - 22, w: 24, h: 22, cd: 1.5 + Math.random() });
+    else if (s.kind.startsWith("fact:")) { const f = B.facts[+s.kind.slice(5)]; if (f) G.enemies.push({ ...base, kind: "fact", fact: f, x: s.x * TILE, y: (s.row - 2.6) * TILE, w: 26, h: 22, bx: s.x * TILE, by: (s.row - 2.6) * TILE }); }
     else G.enemies.push({ ...base, kind: "fly", x: s.x * TILE, y: (s.row - 3.2) * TILE, w: 22, h: 18, bx: s.x * TILE, by: (s.row - 3.2) * TILE });
   }
   G.startX = G.player.x; G.arenaX = G.arena.x0 * TILE;
@@ -1163,7 +1260,7 @@ function startLevel(L) {
   $("lvlChip").textContent = L.name; $("toasts").textContent = "";
   $("bossbar").hidden = true; $("meterChip").hidden = !L.meter; $("leapCard").hidden = true; leapShown = null;
   $("roomCard").hidden = true; $("stage").classList.remove("carded", "leaping");
-  heartsShown = MAXH; renderHearts(); renderSlips(); renderInsight(); renderScore(); resize();
+  heartsShown = G.maxH; renderHearts(); renderSlips(); renderInsight(); renderScore(); resize();
   lastFrame = performance.now();
   toast(L.station + ". Read the signs: the gates and leaps ask about them.");
 }
@@ -1176,13 +1273,13 @@ let heartsShown = MAXH;
 function renderHearts() {
   const h = $("hearts"), cls = G.hearts < heartsShown ? "hit" : G.hearts > heartsShown ? "gain" : null; heartsShown = G.hearts;
   if (cls && !RM) { h.classList.remove("hit", "gain"); void h.offsetWidth; h.classList.add(cls); }
-  $("hearts").innerHTML = Array.from({ length: MAXH }, (_, i) => i < G.hearts ? HEART_FULL : HEART_EMPTY).join(""); $("hearts").setAttribute("aria-label", G.hearts + " of " + MAXH + " hearts"); }
+  $("hearts").innerHTML = Array.from({ length: G.maxH }, (_, i) => i < G.hearts ? HEART_FULL : HEART_EMPTY).join(""); $("hearts").setAttribute("aria-label", G.hearts + " of " + G.maxH + " hearts"); }
 function renderSlips() { $("slipChip").textContent = "Slips " + G.slips; }
-function renderInsight() { const c = $("insightChip"); c.textContent = ""; c.append("Insight ", el("span", { class: "pips" }, "◆".repeat(G.insight), el("i", { text: "◇".repeat(MAXI - G.insight) }))); c.setAttribute("aria-label", "Insight " + G.insight + " of " + MAXI); if (leapShown) renderLeapCard(leapShown); }
+function renderInsight() { const c = $("insightChip"); c.textContent = ""; c.append("Insight ", el("span", { class: "pips" }, "◆".repeat(G.insight), el("i", { text: "◇".repeat(Math.max(0, G.d.maxI - G.insight)) }))); c.setAttribute("aria-label", "Insight " + G.insight + " of " + G.d.maxI); if (leapShown) renderLeapCard(leapShown); }
 function renderScore() { $("scoreChip").textContent = Math.round(G.scoreShown).toLocaleString() + (G.streak >= 2 ? "  ×" + G.streak : ""); }
 function addScore(n, x, y) { G.score += n; renderScore(); if (x != null) G.pops.push({ x, y, text: "+" + n, life: 1 }); }
-function gainInsight(n) { const before = G.insight; G.insight = Math.min(MAXI, G.insight + n); if (G.insight > before) { renderInsight(); const c = $("insightChip"); if (!RM) { c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse"); } } }
-function rightAnswer(x, y) { G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); addScore(100 + 25 * (G.streak - 1), x, y); }
+function gainInsight(n) { const before = G.insight; G.insight = Math.min(G.d.maxI, G.insight + n); if (G.insight > before) { renderInsight(); const c = $("insightChip"); if (!RM) { c.classList.remove("pulse"); void c.offsetWidth; c.classList.add("pulse"); } } }
+function rightAnswer(x, y) { G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); addScore(100 + 25 * (G.streak - 1), x, y); gainXP(40, x, y - 16); }
 function toast(msg, kind, ms) {
   const t = el("div", { class: "toast" + (kind ? " " + kind : ""), text: msg });
   const box = $("toasts"); box.append(t); while (box.children.length > 3) box.firstChild.remove();
@@ -1195,6 +1292,8 @@ function updateNear() {
   const consider = (ox, oy, text, sign) => { const d = Math.hypot(ox - cx, oy - cy); if (d < bd) { bd = d; best = { text, sign }; } };
   for (const s of G.signs) consider(s.x + 13, s.y + 17, (s.seg.steps ? "Scroll: " : "Sign: ") + s.seg.title, s);
   for (const o of G.orbs) if (!o.taken) consider(o.x, o.y, "Orb: " + o.full, null);
+  for (const e of G.enemies) if (e.alive && e.kind === "fact") consider(e.x + e.w / 2, e.y + e.h / 2 + 30, "Fact wisp: \u201c" + e.fact[0] + "\u201d. Stomp it if TRUE.", null);
+  for (const ch of G.chests) if (ch.state !== "open") consider(ch.x, ch.y - 10, ch.state === "sealed" ? "Riddle chest: resealing…" : "↓ Open the riddle chest (answer a question)", null);
   if (G.room) roomNear(G.room, (x, y, text) => consider(x, y, text, null));
   nearSign = best && best.sign;
   const box = $("near");
@@ -1206,6 +1305,7 @@ function updateNear() {
 $("nearBtn").addEventListener("click", () => { if (nearSign) openSign(nearSign); });
 $("pauseBtn").addEventListener("click", e => { e.currentTarget.blur(); openPause(); });
 $("shrineBtn").addEventListener("click", runShrine);
+$("charBtn").addEventListener("click", () => openCharacter(() => { closeModal(); renderMap(); renderLevelChip(); }));
 
 /* Leap of Judgement card */
 let leapShown = null;
@@ -1234,9 +1334,10 @@ function openPause() {
   if (!G || modalOpen) return;
   showModal(p => p.append(
     el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "Paused" }),
-    el("p", { class: "muted", text: "Score " + G.score.toLocaleString() + ". Slips " + G.slips + ". Pearls " + G.pearlsGot + " of 3. Hearts " + G.hearts + " of " + MAXH + "." }),
+    el("p", { class: "muted", text: "Score " + G.score.toLocaleString() + ". Slips " + G.slips + ". Pearls " + G.pearlsGot + " of 3. Hearts " + G.hearts + " of " + G.maxH + "." }),
     el("div", { class: "actions" },
       el("button", { type: "button", class: "btn primary", text: "Resume", onclick: closeModal }),
+      el("button", { type: "button", class: "btn", text: "Character", onclick: () => openCharacter(() => { closeModal(); openPause(); }) }),
       el("button", { type: "button", class: "btn", text: "Read the scrolls", onclick: () => openCodex(G.L, () => { closeModal(); openPause(); }) }),
       el("button", { type: "button", class: "btn", text: "Back to the last banner", onclick: () => { closeModal(); respawn(); } }),
       G.room && G.room.inside && !G.room.solved ? el("button", { type: "button", class: "btn", text: "Reset the puzzle room", onclick: () => { closeModal(); roomReset(G.room); } }) : null,
@@ -1282,7 +1383,7 @@ async function triggerDoor(d) {
     const it = QB[d.seg.id];
     const ok = await askGate(it, "Gate · " + G.L.station);
     if (!G) return;
-    if (ok) { srsHit(it.id); rightAnswer(d.col * TILE, GR * TILE - 110); } else { srsMiss(it.id); G.missed.push(it.id); }
+    if (ok) { srsHit(it.id); rightAnswer(d.col * TILE, GR * TILE - 110); const qb = Math.round(150 * (G.quick || 0)); if (qb > 0) addScore(qb, d.col * TILE, GR * TILE - 130); } else { srsMiss(it.id); G.missed.push(it.id); }
     openDoor(d);
     if (!ok) knowledgeHit();
   } else if (d.kind === "echo") {
@@ -1294,7 +1395,7 @@ async function triggerDoor(d) {
       for (let i = 0; i < echoes.length; i++) {
         const ok = await askGate(QB[echoes[i]], "Echo Gate · " + (i + 1) + " of " + echoes.length);
         if (!G) return;
-        if (ok) addScore(60); else { knowledgeHit(); if (G.hearts <= 0) break; }
+        if (ok) { addScore(60); gainXP(20); } else { knowledgeHit(); if (G.hearts <= 0) break; }
       }
     }
     if (G) openDoor(d);
@@ -1317,6 +1418,7 @@ function zoneComplete(z) {
   z.done = true; openDoor(z.door);
   const s = z.seg;
   if (!z.wrong) addScore(200, z.door.col * TILE, GR * TILE - 110);
+  gainXP(z.wrong ? 10 : 30);
   showModal(p => {
     const cont = el("button", { type: "button", class: "btn primary", text: "Onward", onclick: closeModal });
     p.append(el("span", { class: "kicker", text: "Complete · " + s.title }), el("h2", { text: "What you gathered" }), el("ul", { class: "list" }, ...s.good.map(x => el("li", { text: x[1] }))),
@@ -1330,7 +1432,7 @@ function touchOrb(o) {
   if (o.taken || z.done) return;
   o.taken = true;
   if (o.good) {
-    z.got++; burst(o.x, o.y, G.t.accent, 14); ring(o.x, o.y, G.t.accent, 200); addScore(50, o.x, o.y - 20);
+    z.got++; burst(o.x, o.y, G.t.accent, 14); ring(o.x, o.y, G.t.accent, 200); gainXP(10, o.x, o.y - 36); addScore(50, o.x, o.y - 20);
     toast("Gathered " + z.got + " of " + z.total + ": " + o.full, "good");
     if (z.got === z.total) setTimeout(() => G && zoneComplete(z), 250);
   } else { z.wrong = true; burst(o.x, o.y, "#ff7a8a", 16); knowledgeHit(o.full + ": " + o.why); }
@@ -1361,7 +1463,7 @@ function landAnswer(pl) {
   }
 }
 function takePearl(pr) {
-  pr.taken = true; G.pearlsGot++; gainInsight(1); addScore(300, pr.x, pr.y - 20);
+  pr.taken = true; G.pearlsGot++; gainInsight(1); gainXP(50, pr.x, pr.y - 38); addScore(300, pr.x, pr.y - 20);
   burst(pr.x, pr.y, "#ffffff", 26); burst(pr.x, pr.y, "#8fd3ff", 16); ring(pr.x, pr.y, "#d9c8ff", 260); hitstop(0.05);
   const it = QB[pr.fact];
   showModal(p => {
@@ -1382,7 +1484,7 @@ function startBoss() {
   G.boss = { x: G.bossX, y: GR * TILE - 70, w: 70, h: 70, vx: 0, vy: 0, hp: prev ? prev.hp : B.hp, max: B.hp, t: 0, act: 1.6, inv: 0, face: -1, flying, trail: [], dead: false,
     phase: prev ? prev.phase : 1, spike: "down", spikeT: 2.5, attacks: 0 };
   $("bossbar").hidden = false; $("bossName").textContent = B.name; updateBossBar();
-  toast(B.name + " blocks the way. Stomp it to make it answer.");
+  toast(B.name + " blocks the way. Stomp it to make it answer. Dash into its shots to reflect them.", null, 6000);
 }
 function updateBossBar() { $("bossHp").style.width = Math.max(0, G.boss.hp / G.boss.max * 100) + "%"; $("bossName").textContent = G.L.boss.name + (G.boss.phase === 2 ? " · enraged" : ""); }
 async function bossRecall(heavy) {
@@ -1392,9 +1494,11 @@ async function bossRecall(heavy) {
   const s = await askRecall(it, G.L.boss.name + " asks · " + it.src + (heavy ? " · crown broken" : ""));
   if (!G) return;
   G.recall.push(s);
+  if (s > 0) gainXP(s === 2 ? 40 : 15, b.x + b.w / 2, b.y - 30);
   if (s === 2) { srsHit(it.id); G.streak++; G.bestStreak = Math.max(G.bestStreak, G.streak); gainInsight(1); } else { srsMiss(it.id); G.missed.push(it.id); }
   addScore(s * 200, b.x + b.w / 2, b.y - 10);
-  b.hp -= s; b.inv = 1.4; updateBossBar(); if (s > 0) { b.flash = 1; G.shake = Math.max(G.shake, 0.25 * s); }
+  const dmg = s + (s === 2 && G.d.bonusHit ? 1 : 0); if (dmg > s) toast("Might: a double strike!", "good");
+  b.hp -= dmg; b.inv = 1.4; updateBossBar(); if (s > 0) { b.flash = 1; G.shake = Math.max(G.shake, 0.25 * s); }
   if (s > 0) burst(b.x + b.w / 2, b.y + 10, G.t.accent, 24);
   if (s === 0) knowledgeHit();
   if (!G) return;
@@ -1403,12 +1507,19 @@ async function bossRecall(heavy) {
     toast(G.L.boss.name + " enrages and grows a spike crown. When the spikes are up, only a ground pound breaks through.", "bad", 6500);
   }
 }
+function staggerBoss() {
+  const b = G.boss; if (!b || b.dead || b.dying) return;
+  b.stagger = G.d.stagger; b.spike = "down"; b.spikeT = G.d.stagger; b.flash = 1; b.vx = 0; G.shake = 0.35; hitstop(0.1);
+  burst(b.x + b.w / 2, b.y + b.h / 2, "#8fd3ff", 30); gainXP(5);
+  toast("Staggered! The guardian is open. Stomp it now.", "good", 3500);
+}
 function finalizeBoss() {
   const b = G.boss;
   b.dead = true; b.dying = 0; G.shake = 0.6; hitstop(0.12);
   burst(b.x + b.w / 2, b.y + b.h / 2, G.t.accent, 60, { size: 3.2 }); burst(b.x + b.w / 2, b.y + b.h / 2, "#ffffff", 30, { size: 3 });
   ring(b.x + b.w / 2, b.y + b.h, "#ffffff", 420); ring(b.x + b.w / 2, b.y + b.h, G.t.accent, 280);
-  $("bossbar").hidden = true; addScore(500);
+  $("bossbar").hidden = true; addScore(500); gainXP(100);
+  G.loot = { id: itemFor(G.L.id, "boss"), x: G.arena.x1 * TILE - 7 * TILE, y: GR * TILE - 30, t: 0, taken: false };
   G.portal = { x: G.arena.x1 * TILE - 3 * TILE, y: GR * TILE - 56, born: G.time };
   const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0;
   toast(G.L.boss.name + " falls. A portal opens.", "good");
@@ -1422,6 +1533,7 @@ function finishLevel() {
   const newBest = G.score > (P.best[L.id] || 0);
   P.stars[L.id] = Math.max(P.stars[L.id] || 0, stars); P.clears[L.id] = (P.clears[L.id] || 0) + 1;
   P.best[L.id] = Math.max(P.best[L.id] || 0, G.score); P.pearls[L.id] = Math.max(P.pearls[L.id] || 0, G.pearlsGot); save();
+  gainXP(100);
   const missed = [...new Set(G.missed)];
   showModal(p => {
     const bs = el("div", { class: "bigstars", "aria-label": stars + " of 3 stars" }); for (let i = 0; i < 3; i++) bs.append(i < stars ? el("b", { text: "★" }) : "☆");
@@ -1433,6 +1545,7 @@ function finishLevel() {
         el("span", { text: "Pearls" }), el("span", { text: G.pearlsGot + " / 3" }),
         el("span", { text: "Best answer streak" }), el("span", { text: String(G.bestStreak) }),
         el("span", { text: "Knowledge slips" }), el("span", { text: String(G.slips) }),
+        el("span", { text: "Character level" }), el("span", { text: String(charData().level) }),
         el("span", { text: "Guardian recall average" }), el("span", { text: avg.toFixed(1) + " / 2 over " + G.recall.length })));
     if (missed.length) p.append(el("h3", { text: "Sent to the Review Shrine" }), el("ul", { class: "missed-list" }, ...missed.map(id => { const it = QB[id]; return el("li", {}, el("div", { text: it.q }), el("div", { class: "a", text: answerText(it) })); })));
     else p.append(el("p", { class: "lore", text: "A clean run. Nothing goes to the shrine from this realm." }));
@@ -1446,8 +1559,10 @@ function finishLevel() {
 function solid(tx, ty) {
   if (tx < 0 || tx >= G.W) return true;
   if (G.dyn[tx] && ty < GR) return true;
-  if (ty < 0 || ty >= ROWS) return false;
-  return G.tiles[ty * G.W + tx] > 0;
+  if (ty < 0) return G.tiles[tx] === 5;
+  if (ty >= ROWS) return false;
+  const v = G.tiles[ty * G.W + tx];
+  return v > 0 && v !== 6;
 }
 function rectSolid(x, y, w, h) {
   const x0 = Math.floor(x / TILE), x1 = Math.floor((x + w - 0.01) / TILE), y0 = Math.floor(y / TILE), y1 = Math.floor((y + h - 0.01) / TILE);
@@ -1467,6 +1582,7 @@ function moveY(e, dy) {
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 function hurt(fromX, up) {
   const p = G.player; if (p.inv > 0 || p.dash > 0) return;
+  if (G.d.ward && G.wardReady) { G.wardReady = false; p.inv = 1; ring(p.x + p.w / 2, p.y + p.h / 2, "#8fd3ff", 220); toast("Your Slime-proof Gloves absorb the hit. The ward returns at the next banner.", "good"); return; }
   G.hearts--; renderHearts(); p.inv = 1.3; p.pound = 0; G.shake = 0.2; p.hflash = 1; hitstop(0.09);
   p.vx = (p.x + p.w / 2 < fromX ? -1 : 1) * 260; p.vy = up ? -480 : -320;
   burst(p.x + 9, p.y + 10, "#ff7a8a", 10);
@@ -1474,7 +1590,7 @@ function hurt(fromX, up) {
 }
 function respawn() {
   const p = G.player, c = G.check;
-  Object.assign(p, { x: c.x - 4, y: GR * TILE - p.h - 1, vx: 0, vy: 0, inv: 1, dash: 0, pound: 0, onPlat: null, jumps: 1, dashReady: true, cape: null, sq: 0 });
+  Object.assign(p, { x: c.x - 4, y: GR * TILE - p.h - 1, vx: 0, vy: 0, inv: 1, dash: 0, pound: 0, onPlat: null, jumps: G.d.airJumps, dashes: G.d.airDashes, cape: null, sq: 0 });
   ring(p.x + p.w / 2, p.y + p.h, G.t.accent, 220); burst(p.x + p.w / 2, p.y + p.h / 2, G.t.accent, 16, { g: -100 });
   if (G.boss && !G.boss.dead) { const d = G.doors.find(x => x.kind === "arena"); d.open = true; G.dyn[d.col] = 0; G.bossStarted = false; G.shots = []; G.waves = []; $("bossbar").hidden = true; }
   const ch = G.chase;
@@ -1485,7 +1601,7 @@ function respawn() {
 function faint() {
   G.hearts = 0; renderHearts();
   showModal(p => {
-    const cont = el("button", { type: "button", class: "btn primary", text: "Rise again", onclick: () => { closeModal(); G.hearts = MAXH; renderHearts(); respawn(); } });
+    const cont = el("button", { type: "button", class: "btn primary", text: "Rise again", onclick: () => { closeModal(); G.hearts = G.maxH; renderHearts(); respawn(); } });
     p.append(el("span", { class: "kicker", text: G.L.station }), el("h2", { text: "You fainted" }),
       el("p", { class: "lore", text: "You wake at the last banner with full hearts. Opened gates stay open, and your missed questions are waiting at the Echo Gate." }), el("div", { class: "actions" }, cont,
         el("button", { type: "button", class: "btn quiet", text: "Leave the realm", onclick: quitToMap })));
@@ -1518,6 +1634,7 @@ function breakCracked(tx, ty) {
   if (tx < 0 || tx >= G.W || G.tiles[ty * G.W + tx] !== 4) return;
   G.tiles[ty * G.W + tx] = 0;
   burst(tx * TILE + 16, ty * TILE + 10, G.t.top, 10);
+  markDirty(tx);
   if (G.room && G.room.impl.onBreak && tx >= G.room.c0 && tx < G.room.c1) G.room.impl.onBreak(G.room, tx, ty);
   breakCracked(tx - 1, ty); breakCracked(tx + 1, ty);
   if (ty > 0) breakCracked(tx, ty - 1);
@@ -1535,23 +1652,23 @@ function updatePlayer(dt) {
   // dash
   if (pressed.dash) {
     pressed.dash = false;
-    if (p.dashReady && p.dashCd <= 0 && !p.pound) { p.dash = 0.15; p.dashCd = 0.32; if (!p.ground) p.dashReady = false; if (dir) p.face = dir; ring(p.x + 9, p.y + 14, "#8fd3ff"); }
+    if (p.dashes > 0 && p.dashCd <= 0 && !p.pound) { p.dash = 0.15; p.dashCd = G.d.dashCd; if (!p.ground) p.dashes--; if (dir) p.face = dir; ring(p.x + 9, p.y + 14, "#8fd3ff"); }
   }
   // ground pound
   if (pressed.down) {
     pressed.down = false;
-    if (p.ground) roomInteract();
+    if (p.ground) { if (!roomInteract()) chestInteract(); }
     else if (!p.pound && p.dash <= 0) { p.pound = 1; p.hang = 0.1; p.vx = 0; p.vy = 0; }
   }
   if (p.dash > 0) {
-    p.dash -= dt; p.vx = p.face * 520; p.vy = 0;
+    p.dash -= dt; p.vx = p.face * G.d.dashSpeed; p.vy = 0;
     G.trail.push({ x: p.x, y: p.y, f: p.face, life: 0.25 });
   } else if (p.pound === 1) {
     p.hang -= dt; p.vx = 0; p.vy = 0; if (p.hang <= 0) { p.pound = 2; p.vy = 1050; }
   } else if (p.pound === 2) {
     p.vx = 0; p.vy = 1050;
   } else {
-    if (dir) { p.vx += dir * 2000 * dt; p.vx = clamp(p.vx, -205, 205); p.face = dir; }
+    if (dir) { p.vx += dir * 2000 * dt; p.vx = clamp(p.vx, -G.d.speed, G.d.speed); p.face = dir; }
     else if (p.lock <= 0) { const f = (p.ground ? 2200 : 900) * dt; p.vx = Math.abs(p.vx) <= f ? 0 : p.vx - Math.sign(p.vx) * f; }
     p.vy += 1900 * dt; if (!keys.jump && p.vy < -240) p.vy += 2400 * dt; p.vy = Math.min(p.vy, 900);
   }
@@ -1559,7 +1676,7 @@ function updatePlayer(dt) {
   p.wall = 0;
   if (!p.ground && p.dash <= 0 && !p.pound && dir && p.vy > -50) {
     const probe = dir > 0 ? p.x + p.w + 0.5 : p.x - 1.5;
-    if (rectSolid(probe, p.y + 4, 1, p.h - 10)) { p.wall = dir; if (p.vy > 110) p.vy = 110; p.jumps = 1; p.dashReady = true; if (Math.random() < 0.2) G.fx.push({ x: dir > 0 ? p.x + p.w : p.x, y: p.y + p.h - 4, vx: -dir * 20, vy: -20, life: 0.3, c: "#d8d0e8" }); }
+    if (rectSolid(probe, p.y + 4, 1, p.h - 10)) { p.wall = dir; if (p.vy > 110) p.vy = 110; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; if (Math.random() < 0.2) G.fx.push({ x: dir > 0 ? p.x + p.w : p.x, y: p.y + p.h - 4, vx: -dir * 20, vy: -20, life: 0.3, c: "#d8d0e8" }); }
   }
   // jumps
   if (p.buf > 0 && !p.pound) {
@@ -1585,7 +1702,7 @@ function updatePlayer(dt) {
     }
   }
   if (p.ground) {
-    p.coyote = 0.1; p.jumps = 1; p.dashReady = true;
+    p.coyote = 0.1; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes;
     if (!wasGround && vyBefore > 120) { const k = clamp(vyBefore / 900, 0.15, 1); p.sq = -0.34 * k; if (vyBefore > 300) { dust(p.x + 2, p.y + p.h, 2 + Math.round(k * 3), -1); dust(p.x + p.w - 2, p.y + p.h, 2 + Math.round(k * 3), 1); } }
     if (wasPound) poundLand();
   }
@@ -1628,7 +1745,7 @@ function poundLand() {
   p.pound = 0; G.shake = 0.18;
   ring(p.x + 9, p.y + p.h, G.t.top); burst(p.x + 9, p.y + p.h, G.t.top, 10);
   dust(p.x + 2, p.y + p.h, 5, -1.4); dust(p.x + p.w - 2, p.y + p.h, 5, 1.4); hitstop(0.05);
-  for (const e of G.enemies) if (e.alive && Math.abs(e.x + e.w / 2 - (p.x + 9)) < 70 && Math.abs(e.y + e.h - (p.y + p.h)) < 40) { killEnemy(e, "fly"); addScore(50, e.x, e.y - 10); }
+  for (const e of G.enemies) if (e.alive && e.kind !== "fact" && Math.abs(e.x + e.w / 2 - (p.x + 9)) < G.d.poundR && Math.abs(e.y + e.h - (p.y + p.h)) < 40) { killEnemy(e, "fly"); gainXP(3); addScore(50, e.x, e.y - 10); }
 }
 
 function update(dt) {
@@ -1645,6 +1762,10 @@ function update(dt) {
     if (!pl.alive && pl.fall) { pl.fall += dt; pl.y = pl.y0 + pl.fall * pl.fall * 400; }
   }
   updatePlayer(dt);
+  updateChests(dt);
+  updateHazards(dt);
+  if (G.forks.length) updateForks();
+  if (modalOpen || !G) return;
   const p = G.player;
   if (p.y > ROWS * TILE + 40) {
     G.hearts--; renderHearts(); G.streak = 0; renderScore(); toast("You fell. Back to the last banner.", "bad");
@@ -1654,7 +1775,7 @@ function update(dt) {
   for (const tp of G.tips) if (!TIPS_SEEN.has(tp.key) && p.x > tp.x - 5 * TILE) { TIPS_SEEN.add(tp.key); toast(tp.text, null, 6500); }
   if (G.room) { roomUpdate(G.room, dt); if (modalOpen || !G) return; }
   // checkpoints
-  for (const f of G.flags) if (p.x > f.x - 8 && f.x > G.check.x) { if (!f.on) { f.on = true; toast("Banner raised. You'll return here if you fall.", "good"); } G.check = f; }
+  for (const f of G.flags) if (p.x > f.x - 8 && f.x > G.check.x) { if (!f.on) { f.on = true; toast("Banner raised. You'll return here if you fall.", "good"); G.wardReady = true; if (G.d.regen && G.hearts < G.maxH) { G.hearts++; renderHearts(); toast("Iron Tonic: a heart restored.", "good"); } } G.check = f; }
   // signs, zones
   for (const s of G.signs) if (!s.read && overlap(p, s)) { openSign(s); return; }
   let inLeap = null;
@@ -1668,9 +1789,9 @@ function update(dt) {
   if (modalOpen) return;
   // pickups
   for (const pr of G.pearls) if (!pr.taken && Math.hypot(p.x + p.w / 2 - pr.x, p.y + p.h / 2 - pr.y) < 22) { takePearl(pr); return; }
-  for (const po of G.potions) if (!po.taken && Math.hypot(p.x + p.w / 2 - po.x, p.y + p.h / 2 - po.y) < 20) { po.taken = true; if (G.hearts < MAXH) { G.hearts++; renderHearts(); toast("A remedy restores a heart.", "good"); } else addScore(100, po.x, po.y); burst(po.x, po.y, "#ff7a8a", 12); }
+  for (const po of G.potions) if (!po.taken && Math.hypot(p.x + p.w / 2 - po.x, p.y + p.h / 2 - po.y) < 20) { po.taken = true; if (G.hearts < G.maxH) { G.hearts++; renderHearts(); toast("A remedy restores a heart.", "good"); } else addScore(100, po.x, po.y); burst(po.x, po.y, "#ff7a8a", 12); }
   // springs and spikes
-  for (const sp of G.springs) { sp.t -= dt; if (p.vy > 0 && overlap(p, sp) && p.y + p.h - sp.y < 14) { p.vy = -1000; p.pound = 0; p.jumps = 1; p.dashReady = true; sp.t = 0.25; p.y = sp.y - p.h; ring(sp.x + 12, sp.y, G.t.accent); } }
+  for (const sp of G.springs) { sp.t -= dt; if (p.vy > 0 && overlap(p, sp) && p.y + p.h - sp.y < 14) { p.vy = -1000; p.pound = 0; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; sp.t = 0.25; p.y = sp.y - p.h; ring(sp.x + 12, sp.y, G.t.accent); } }
   for (const sk of G.spikes) if (overlap(p, sk)) hurt(p.x + p.w / 2 + (p.vx > 0 ? 10 : -10), true);
   // doors
   for (const d of G.doors) {
@@ -1708,11 +1829,13 @@ function update(dt) {
     } else if (e.kind === "turret") {
       e.cd -= dt;
       if (e.cd <= 0 && Math.abs(p.x - e.x) < 9 * TILE) { e.cd = 2.3; e.recoil = 0.18; const dirx = Math.sign(p.x - e.x) || -1; G.shots.push({ x: e.x + e.w / 2 + dirx * 12, y: e.y + 8, vx: dirx * 180, vy: 0, life: 3.5 }); }
-    } else { e.x = e.bx + Math.sin(e.t * 0.9) * 70; e.y = e.by + Math.sin(e.t * 2.2) * 18; }
+    } else if (e.kind === "fact") { e.x = e.bx + Math.sin(e.t * 0.6) * 36; e.y = e.by + Math.sin(e.t * 1.6) * 10; }
+    else { e.x = e.bx + Math.sin(e.t * 0.9) * 70; e.y = e.by + Math.sin(e.t * 2.2) * 18; }
     if (e.y > ROWS * TILE) e.alive = false;
+    if (e.kind === "fact") { if (overlap(p, e) && (p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { stompFact(e); p.vy = -460; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; } continue; }
     if (overlap(p, e)) {
       if (p.dash > 0) continue;
-      if ((p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { killEnemy(e, p.pound ? "fly" : "squash"); if (!p.pound) { p.vy = keys.jump ? -560 : -430; p.sq = 0.2; } p.jumps = 1; p.dashReady = true; hitstop(0.06); addScore(50, e.x, e.y - 10); }
+      if ((p.vy > 60 || p.pound) && p.y + p.h - e.y < 18) { killEnemy(e, p.pound ? "fly" : "squash"); if (!p.pound) { p.vy = keys.jump ? -560 : -430; p.sq = 0.2; } p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; hitstop(0.06); gainXP(3); addScore(50, e.x, e.y - 10); }
       else hurt(e.x + e.w / 2);
     }
   }
@@ -1727,18 +1850,19 @@ function update(dt) {
   if (b) b.flash = Math.max(0, (b.flash || 0) - dt * (b.dying ? 0 : 3.5));
   if (b && !b.dead && !b.dying && G.bossStarted) {
     b.t += dt; b.inv -= dt;
+    const stag = b.stagger > 0; if (stag) b.stagger -= dt;
     const cx = p.x + p.w / 2, bx = b.x + b.w / 2, fast = b.phase === 2 ? 1.45 : 1;
     b.face = cx < bx ? -1 : 1;
-    if (b.phase === 2 && b.inv < 98) {
+    if (b.phase === 2 && b.inv < 98 && !stag) {
       b.spikeT -= dt;
       if (b.spikeT <= 0) { if (b.spike === "down") { b.spike = "warn"; b.spikeT = 0.7; } else if (b.spike === "warn") { b.spike = "up"; b.spikeT = 2.4; } else { b.spike = "down"; b.spikeT = 2.2; } }
     }
     const ax0 = (G.arena.x0 + 1) * TILE, ax1 = (G.arena.x1 - 1) * TILE - b.w;
     if (b.flying) {
-      b.x += clamp(cx - bx, -1, 1) * 60 * fast * dt; b.x = clamp(b.x, ax0, ax1);
+      if (!stag) b.x += clamp(cx - bx, -1, 1) * 60 * fast * dt; b.x = clamp(b.x, ax0, ax1);
       b.y = GR * TILE - b.h - 34 + Math.sin(b.t * 1.6 * fast) * 24;
     } else {
-      b.vx = b.face * (b.inv > 0 ? 20 : 68 * fast);
+      b.vx = stag ? 0 : b.face * (b.inv > 0 ? 20 : 68 * fast);
       const fallV = b.vy;
       b.vy = Math.min(b.vy + 1900 * dt, 900);
       moveX(b, b.vx * dt); b.x = clamp(b.x, ax0, ax1);
@@ -1746,7 +1870,7 @@ function update(dt) {
     }
     b.trail.unshift({ x: bx, y: b.y + b.h * 0.6 }); if (b.trail.length > 40) b.trail.pop();
     b.act -= dt;
-    if (b.act <= 0 && b.inv <= 0) {
+    if (b.act <= 0 && b.inv <= 0 && !stag) {
       b.act = (1.6 + Math.random() * 1.2) / fast; b.attacks++;
       if (!b.flying && Math.random() < (b.phase === 2 ? 0.55 : 0.4)) b.vy = -640;
       else if (b.flying && b.phase === 2 && b.attacks % 2 === 0) {
@@ -1763,7 +1887,7 @@ function update(dt) {
         if (b.spike === "up" && !pounding) { hurt(bx, true); toast("Spikes up: ground-pound to break through.", "bad"); }
         else {
           if (pounding) { b.spike = "down"; b.spikeT = 2.2; G.shake = 0.35; burst(bx, b.y, "#ffffff", 20); }
-          p.vy = -560; p.pound = 0; p.jumps = 1; p.dashReady = true; b.inv = 99; bossRecall(pounding && b.phase === 2); return;
+          p.vy = -560; p.pound = 0; p.jumps = G.d.airJumps; p.dashes = G.d.airDashes; b.inv = 99; bossRecall(pounding && b.phase === 2); return;
         }
       } else if (b.inv < 98) hurt(bx);
     }
@@ -1772,7 +1896,20 @@ function update(dt) {
   G.waves = G.waves.filter(w => w.life > 0);
   for (const s of G.shots) {
     s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt;
-    if (Math.hypot(s.x - (p.x + p.w / 2), s.y - (p.y + p.h / 2)) < 14) { s.life = 0; hurt(s.x); }
+    if (s.friendly) {
+      const bb = G.boss;
+      if (bb && !bb.dead && !bb.dying && s.x > bb.x && s.x < bb.x + bb.w && s.y > bb.y && s.y < bb.y + bb.h) { s.life = 0; staggerBoss(); }
+      for (const e of G.enemies) if (e.alive && e.kind !== "fact" && Math.abs(s.x - (e.x + e.w / 2)) < 16 && Math.abs(s.y - (e.y + e.h / 2)) < 16) { s.life = 0; killEnemy(e, "fly"); addScore(50, e.x, e.y - 10); }
+    }
+    else if (Math.hypot(s.x - (p.x + p.w / 2), s.y - (p.y + p.h / 2)) < (p.dash > 0 ? 20 : 14)) {
+      if (p.dash > 0) {
+        const bb = G.boss, tx = bb && !bb.dead ? bb.x + bb.w / 2 : s.x - s.vx, ty = bb && !bb.dead ? bb.y + bb.h / 2 : s.y - s.vy;
+        const a = Math.atan2(ty - s.y, tx - s.x), sp = Math.hypot(s.vx, s.vy) * 1.6;
+        s.vx = Math.cos(a) * sp; s.vy = Math.sin(a) * sp; s.friendly = true; s.life = 3;
+        ring(s.x, s.y, "#8fd3ff", 200); burst(s.x, s.y, "#8fd3ff", 10); hitstop(0.05); gainXP(5); addScore(40, s.x, s.y - 10);
+        if (!G.toldReflect) { G.toldReflect = true; toast("Reflected! Dashing into a shot sends it back.", "good"); }
+      } else { s.life = 0; hurt(s.x); }
+    }
     if (solid(Math.floor(s.x / TILE), Math.floor(s.y / TILE))) s.life = 0;
   }
   G.shots = G.shots.filter(s => s.life > 0);
@@ -1866,9 +2003,14 @@ function drawBackground() {
       ctx.beginPath(); ctx.ellipse(cx0, cy0, 60 + h2(i, 23) * 50, 9 + h2(i, 24) * 6, 0, 0, 6.283); ctx.ellipse(cx0 + 30, cy0 - 6, 34, 8, 0, 0, 6.283); ctx.fill();
     }
   }
+  lightRays();
   ctx.save(); ctx.translate(0, OFFY);
+  drawSkyline(ctx, t, G.cam + 7000, W, GR * TILE - 96, 0.1, mix(t.far, t.sky[1], 0.5), 1.7);
+  haze(40, GR * TILE, t.sky[1], 0.28);
   drawSkyline(ctx, t, G.cam, W, GR * TILE - 60, 0.2, t.far, 1.4);
+  haze(110, GR * TILE, t.sky[1], 0.22);
   drawSkyline(ctx, t, G.cam, W, GR * TILE - 10, 0.45, t.near, 1);
+  groundMist();
   if (t.river) { ctx.fillStyle = "rgba(90,170,230,0.35)"; ctx.fillRect(0, GR * TILE - 22, W, 14); ctx.fillStyle = "rgba(200,235,255,0.35)"; for (let i = 0; i < 12; i++) { const x = ((i * 97 - G.cam * 0.6 + G.time * 30) % (W + 40) + W + 40) % (W + 40) - 20; ctx.fillRect(x, GR * TILE - 17, 16, 2); } }
   if (t.torches) for (let i = 0; i < 8; i++) { const x = ((i * 260 - G.cam * 0.7) % (W + 260) + W + 260) % (W + 260) - 60, y = GR * TILE - 90; ctx.fillStyle = "#3a3040"; ctx.fillRect(x - 2, y, 4, 18); const fl = 6 + Math.sin(G.time * 12 + i) * 2; const rg = ctx.createRadialGradient(x, y - 4, 1, x, y - 4, 40); rg.addColorStop(0, "rgba(255,190,90,0.55)"); rg.addColorStop(1, "rgba(255,190,90,0)"); ctx.fillStyle = rg; ctx.fillRect(x - 40, y - 44, 80, 80); ctx.fillStyle = "#ffcf6a"; ctx.beginPath(); ctx.ellipse(x, y - 4, 3.5, fl, 0, 0, 6.283); ctx.fill(); }
   ctx.restore();
@@ -1900,24 +2042,7 @@ function label(text, x, y, color, size) {
   ctx.fillStyle = color || "#f4ecd8"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(text, x, y - h / 2 + 4);
 }
 function drawTiles() {
-  const t = G.t, x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
-  for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) {
-    const v = G.tiles[ty * G.W + tx]; if (!v) continue;
-    const X = tx * TILE, Y = ty * TILE;
-    const topOpen = ty === 0 || !G.tiles[(ty - 1) * G.W + tx];
-    if (v === 1 || v === 4) {
-      ctx.fillStyle = t.ground; ctx.fillRect(X, Y, TILE + 0.5, TILE + 0.5);
-      if (h2(tx, ty) > 0.55) { ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(X + h2(tx, ty + 9) * 24, Y + h2(tx + 4, ty) * 24, 5, 3); }
-      if (topOpen) { ctx.fillStyle = t.top; ctx.fillRect(X, Y, TILE + 0.5, 6); ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(X, Y + 6, TILE + 0.5, 2); }
-      if (v === 4) {
-        ctx.strokeStyle = "rgba(255,240,200," + (0.45 + 0.25 * Math.sin(G.time * 3 + tx)) + ")"; ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(X + 4, Y + 9); ctx.lineTo(X + 13, Y + 17); ctx.lineTo(X + 10, Y + 27); ctx.moveTo(X + 13, Y + 17); ctx.lineTo(X + 24, Y + 14); ctx.lineTo(X + 29, Y + 24); ctx.stroke();
-      }
-    } else {
-      ctx.fillStyle = t.plat; rr(X + 1, Y + 2, TILE - 2, TILE - 4, 5); ctx.fill(); ctx.fillStyle = t.top; ctx.fillRect(X + 3, Y + 2, TILE - 6, 3);
-      ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(X + 4, Y + 18, TILE - 8, 2);
-    }
-  }
+  drawTerrain();
   if (G.t.water) {
     const prog = clamp((G.player.x - G.startX) / (G.arenaX - G.startX), 0, 1), wy = ROWS * TILE - 40 - prog * 150;
     ctx.fillStyle = "rgba(60,200,220,0.16)"; ctx.fillRect(G.cam, wy, VW, ROWS * TILE - wy + 40);
@@ -2021,10 +2146,11 @@ function drawPlayer() {
   }
   const flick = p.inv > 0 && p.inv < 1.1 && Math.floor(p.inv * 14) % 2;
   if (flick) ctx.globalAlpha = 0.4;
-  drawFlash(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd");
+  drawSprite(drawHero, p.x + p.w / 2, p.y + p.h / 2, 90, p.hflash, "#ffb3bd", "rgba(10,6,18,0.85)");
   ctx.globalAlpha = 1;
 }
 function drawEnemyAnimated(e) {
+  if (e.kind === "fact") { if (e.alive) drawFact(e); return; }
   const d = e.dead;
   if (!d) { drawEnemy(e); return; }
   const k = d.t / 0.9; if (k >= 1) return;
@@ -2099,6 +2225,7 @@ function drawFlag(f) {
 }
 function drawOrb(o) {
   if (o.taken) return;
+  glow(o.x, o.y, 34, G.t.accent, 0.35);
   const y = o.y + Math.sin(G.time * 2 + o.ph) * 4;
   const rg = ctx.createRadialGradient(o.x - 3, y - 3, 1, o.x, y, o.r + 6); rg.addColorStop(0, "#ffffff"); rg.addColorStop(0.35, G.t.accent); rg.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(o.x, y, o.r + 6, 0, 6.283); ctx.fill();
@@ -2107,6 +2234,7 @@ function drawOrb(o) {
 }
 function drawPearl(pr) {
   if (pr.taken) return;
+  glow(pr.x, pr.y, 40, "#cfe8ff", 0.4 + 0.15 * Math.sin(G.time * 3 + pr.x));
   const y = pr.y + Math.sin(G.time * 2.5 + pr.x) * 3;
   const rg = ctx.createRadialGradient(pr.x, y, 2, pr.x, y, 22); rg.addColorStop(0, "rgba(220,240,255,0.6)"); rg.addColorStop(1, "rgba(220,240,255,0)"); ctx.fillStyle = rg; ctx.fillRect(pr.x - 22, y - 22, 44, 44);
   const g = ctx.createLinearGradient(pr.x - 8, y - 8, pr.x + 8, y + 8); g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#d9c8ff"); g.addColorStop(1, "#9fe8ff");
@@ -2204,19 +2332,20 @@ function drawBoss(b) {
 function render() {
   // puzzle rooms: zoom out until the whole room fits, and centre on it
   const zt = G.roomLock ? Math.min(1, STW / ((ROOM_W + 2.5) * TILE * BASESC)) : 1;
-  G.zoom += (zt - G.zoom) * 0.08; if (Math.abs(zt - G.zoom) < 0.002) G.zoom = zt;
+  G.zoom += (zt - G.zoom) * (1 - Math.exp(-FRAME_DT * 5)); if (Math.abs(zt - G.zoom) < 0.002) G.zoom = zt;
   SC = BASESC * G.zoom; VW = STW / SC; VH = STH / SC; OFFY = Math.max(0, VH - ROWS * TILE);
   ctx.setTransform(DPR * SC, 0, 0, DPR * SC, 0, 0);
   const p = G.player;
   const target = G.roomLock ? G.roomLock.x0 + ROOM_W * TILE / 2 - VW / 2 : p.x + p.w / 2 - VW * 0.42 + G.look;
-  G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * 0.1;
+  G.cam += (clamp(target, 0, Math.max(0, G.W * TILE - VW)) - G.cam) * (1 - Math.exp(-FRAME_DT * 6.5));
   drawBackground();
   const shk = RM ? 0 : G.shake, sx = shk > 0 ? (Math.random() - 0.5) * 8 * shk / 0.3 : 0, sy = shk > 0 ? (Math.random() - 0.5) * 6 * shk / 0.3 : 0;
-  ctx.save(); ctx.translate(-Math.round(G.cam * 10) / 10 + sx, OFFY + sy);
+  ctx.save(); ctx.translate(-G.cam + sx, OFFY + sy);
   if (G.room) roomDrawBack(G.room);
   drawTiles();
   for (const pl of G.plats) drawPlat(pl);
   for (const sk of G.spikes) if (sk.x + sk.w > G.cam && sk.x < G.cam + VW) drawSpikes(sk);
+  drawHazards(); drawForks(); drawChests();
   for (const sp of G.springs) drawSpring(sp);
   for (const f of G.flags) drawFlag(f);
   for (const s of G.signs) drawSign(s);
@@ -2225,11 +2354,25 @@ function render() {
   for (const o of G.orbs) drawOrb(o);
   for (const pr of G.pearls) drawPearl(pr);
   for (const po of G.potions) drawPotion(po);
+  for (const e of G.enemies) if (e.alive && e.x > G.cam - 60 && e.x < G.cam + VW + 60 && e.kind !== "fly") drawShadow(e.x + e.w / 2, e.y + e.h, e.w * 0.55);
   for (const e of G.enemies) if ((e.alive || (e.dead && e.dead.t < 0.9)) && e.x > G.cam - 60 && e.x < G.cam + VW + 60) drawEnemyAnimated(e);
-  if (G.boss && !G.boss.dead) { const b = G.boss; if (b.land > 0) b.land -= 1 / 60; drawFlash(() => drawBoss(b), b.x + b.w / 2, b.y + b.h / 2 - 10, 230, b.flash + (b.act < 0.45 && b.inv <= 0 && !b.dying ? 0.15 * (1 + Math.sin(G.time * 30)) : 0)); }
+  if (G.boss && !G.boss.dead) {
+    const b = G.boss; if (b.land > 0) b.land -= FRAME_DT;
+    drawShadow(b.x + b.w / 2, b.y + b.h, b.w * 0.5);
+    const long = ["wyrm", "serpent"].includes(G.L.boss.shape);
+    drawSprite(() => drawBoss(b), b.x + b.w / 2, b.y + b.h / 2 - 10, long ? 380 : 240, b.flash + (b.act < 0.45 && b.inv <= 0 && !b.dying && !(b.stagger > 0) ? 0.15 * (1 + Math.sin(G.time * 30)) : 0), "#ffffff", "rgba(10,6,18,0.8)");
+    if (b.stagger > 0) { for (let i = 0; i < 4; i++) { const a = G.time * 5 + i * 1.57; bigText("✦", b.x + b.w / 2 + Math.cos(a) * 26, b.y - 12 + Math.sin(a) * 6, 12, "#ffe9a8"); } }
+  }
   for (const w of G.waves) { ctx.fillStyle = G.t.top; ctx.beginPath(); ctx.moveTo(w.x - 12, GR * TILE); ctx.quadraticCurveTo(w.x, GR * TILE - 30, w.x + 12, GR * TILE); ctx.fill(); }
-  for (const s of G.shots) { const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, G.t.enemy); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill(); }
+  for (const s of G.shots) {
+    const c = s.friendly ? "#8fd3ff" : G.t.enemy;
+    glow(s.x, s.y, 22, c, 0.5);
+    const rg = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 9); rg.addColorStop(0, "#fff"); rg.addColorStop(0.5, c); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(s.x, s.y, 9, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = rgba(s.friendly ? "#8fd3ff" : G.t.enemy, 0.35); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.vx * 0.05, s.y - s.vy * 0.05); ctx.stroke();
+  }
+  if (G.portal) glow(G.portal.x, G.portal.y, 70, G.t.accent, 0.5);
   if (G.portal) { const q = G.portal, grow = clamp((G.time - (q.born || 0)) * 2, 0, 1); ctx.save(); ctx.translate(q.x, q.y); ctx.scale(grow, grow); const pg = ctx.createRadialGradient(0, 0, 2, 0, 0, 40); pg.addColorStop(0, "rgba(255,255,255,0.55)"); pg.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = pg; ctx.fillRect(-40, -40, 80, 80); for (let i = 0; i < 3; i++) { ctx.strokeStyle = i === 1 ? G.t.top : G.t.accent; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0, 0, 18 - i * 4, 30 - i * 6, 0, G.time * (2 + i), G.time * (2 + i) + 4.5); ctx.stroke(); } ctx.restore(); label("Portal", q.x, q.y - 40, G.t.accent); }
+  if (!G.exitT) drawShadow(p.x + p.w / 2, p.y + p.h, 11);
   drawPlayer();
   drawCarried();
   drawChase(G.chase);
@@ -2240,9 +2383,11 @@ function render() {
     ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(0.3, f.grow ? f.r * (1.6 - k * 0.6) : f.r * (0.4 + k * 0.6)), 0, 6.283); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  for (const q of G.pops) { ctx.globalAlpha = clamp(q.life * 1.5, 0, 1); ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#ffe9a8"; ctx.fillText(q.text, q.x, q.y); }
+  for (const q of G.pops) { ctx.globalAlpha = clamp(q.life * 1.5, 0, 1); ctx.font = "700 12px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = q.xp ? "#b8e6ff" : "#ffe9a8"; ctx.fillText(q.text, q.x, q.y); }
   ctx.globalAlpha = 1;
   ctx.restore();
+  foreground();
+  vignette();
   // iris wipe in (level start) and out (portal)
   const irisOpen = G.exitT > 0 ? 1 - G.exitT * G.exitT : 1 - Math.pow(1 - G.iris, 3);
   if (irisOpen < 1) {
@@ -2256,13 +2401,16 @@ function render() {
 }
 
 /* ================= loop ================= */
-let lastFrame = performance.now();
+let lastFrame = performance.now(), FRAME_DT = 1 / 60;
 function frame(now) {
   requestAnimationFrame(frame);
   if (!G || $("gameScreen").hidden) return;
-  const dt = clamp((now - lastFrame) / 1000, 0, 1 / 30); lastFrame = now;
+  const dt = clamp((now - lastFrame) / 1000, 0, 1 / 30); lastFrame = now; FRAME_DT = dt || 1 / 60;
   if (G.hitstop > 0 && !modalOpen) { G.hitstop -= dt; G.shake = Math.max(0, G.shake - dt * 0.5); }
-  else if (!modalOpen && !G.done) update(dt);
+  else if (!modalOpen && !G.done) {
+    let rem = dt;
+    while (rem > 1e-6 && G && !modalOpen && !G.done && !(G.hitstop > 0)) { const h = Math.min(rem, 1 / 120); update(h); rem -= h; }
+  }
   else { pressed.jump = pressed.dash = pressed.down = false; }
   if (!G) return;
   G.iris = Math.min(1, G.iris + dt * 1.5);
@@ -2367,6 +2515,7 @@ function roomInteract() {
 function roomReset(r, quiet) {
   if (!r || r.solved) return;
   let k = 0; for (let y = 0; y < ROWS; y++) for (let x = r.c0; x < r.c1; x++) G.tiles[y * G.W + x] = r.snap[k++];
+  for (let x = r.c0; x < r.c1; x += 8) markDirty(x); markDirty(r.c1 - 1);
   G.carry = null;
   r.st = r.impl.init(r);
   const p = G.player; p.x = r.x0 + 8; p.y = FL - p.h - 1; p.vx = p.vy = 0; p.cape = null;
@@ -2382,7 +2531,7 @@ function roomPushBack(r, msg) {
 function whenFree(fn) { if (!G) return; if (!modalOpen) fn(); else setTimeout(() => whenFree(fn), 300); }
 function solveRoom(r) {
   if (r.solved) return;
-  r.solved = true; G.carry = null;
+  r.solved = true; G.carry = null; gainXP(80, r.x0 + ROOM_W * TILE / 2, 140);
   openDoor(r.door); addScore(400, r.door.col * TILE, GR * TILE - 120); gainInsight(1);
   burst(r.x0 + ROOM_W * TILE / 2, 120, G.t.accent, 40, { size: 3 }); G.shake = 0.3; hitstop(0.1);
   $("roomCard").hidden = true; $("stage").classList.remove("carded");
@@ -2983,5 +3132,510 @@ const ROOM_IMPL = {
     }
   }
 };
+
+/* ================= polish: terrain, light, focus, timed hazards, true/false lanes =================
+   Loaded after engine.js and rooms.js. Everything here is called from the engine at run time. */
+
+/* ---------- colour helpers ---------- */
+const _rgbCache = {};
+function hexRgb(h) {
+  if (_rgbCache[h]) return _rgbCache[h];
+  let s = h.replace("#", ""); if (s.length === 3) s = s.split("").map(c => c + c).join("");
+  const n = parseInt(s, 16); return (_rgbCache[h] = [n >> 16 & 255, n >> 8 & 255, n & 255]);
+}
+function mix(a, b, t) { const A = hexRgb(a), B = hexRgb(b); return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",") + ")"; }
+function shade(c, t) { return t >= 0 ? mix(c, "#ffffff", Math.min(1, t)) : mix(c, "#000000", Math.min(1, -t)); }
+function rgba(c, a) { const A = hexRgb(c); return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + a + ")"; }
+
+/* ---------- terrain: hand-shaded tiles, pre-rendered into cached chunks ---------- */
+const CH = 16, chunkCache = new Map();
+let chunkScale = 0;
+function markDirty(tx) {
+  const ci = Math.floor(tx / CH);
+  chunkCache.delete(ci); chunkCache.delete(ci - 1); chunkCache.delete(ci + 1);
+}
+function clearChunks() { chunkCache.clear(); }
+function tileAt(tx, ty) {
+  if (tx < 0 || tx >= G.W) return 1;
+  if (ty < 0) return 0;
+  if (ty >= ROWS) return G.tiles[(ROWS - 1) * G.W + tx] ? 1 : 0;
+  const v = G.tiles[ty * G.W + tx];
+  return v === 5 || v === 6 ? 0 : v;
+}
+function pathRound(x, y, w, h, tl, tr, br, bl) {
+  ctx.beginPath(); ctx.moveTo(x + tl, y); ctx.lineTo(x + w - tr, y); if (tr) ctx.quadraticCurveTo(x + w, y, x + w, y + tr);
+  ctx.lineTo(x + w, y + h - br); if (br) ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+  ctx.lineTo(x + bl, y + h); if (bl) ctx.quadraticCurveTo(x, y + h, x, y + h - bl);
+  ctx.lineTo(x, y + tl); if (tl) ctx.quadraticCurveTo(x, y, x + tl, y); ctx.closePath();
+}
+function drawTile(tx, ty) {
+  const v = tileAt(tx, ty); if (!v) return;
+  const t = G.t, X = tx * TILE, Y = ty * TILE, S = TILE;
+  const up = tileAt(tx, ty - 1), dn = tileAt(tx, ty + 1), lf = tileAt(tx - 1, ty), rt = tileAt(tx + 1, ty);
+  if (v === 2) {
+    // bevelled stone
+    const g = ctx.createLinearGradient(0, Y, 0, Y + S); g.addColorStop(0, shade(t.plat, 0.16)); g.addColorStop(1, shade(t.plat, -0.22));
+    ctx.fillStyle = shade(t.plat, -0.45); pathRound(X + 0.5, Y + 1.5, S - 1, S - 1, 6, 6, 6, 6); ctx.fill();
+    ctx.fillStyle = g; pathRound(X + 1, Y + 1, S - 2, S - 3.5, 6, 6, 6, 6); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(X + 5, Y + 2.5); ctx.lineTo(X + S - 5, Y + 2.5); ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.moveTo(X + 3, Y + S / 2 + 1); ctx.lineTo(X + S - 3, Y + S / 2 + 1); ctx.moveTo(X + S / 2 + (ty % 2 ? 6 : -6), Y + S / 2 + 1); ctx.lineTo(X + S / 2 + (ty % 2 ? 6 : -6), Y + S - 4); ctx.stroke();
+    if (!up) { ctx.fillStyle = t.top; pathRound(X + 1, Y + 0.5, S - 2, 4.5, 4, 4, 1, 1); ctx.fill(); }
+    if (h2(tx, ty + 3) > 0.6) { ctx.fillStyle = "rgba(255,255,255,0.08)"; ctx.beginPath(); ctx.arc(X + 8 + h2(tx, ty) * 14, Y + 10 + h2(ty, tx) * 6, 2, 0, 6.283); ctx.fill(); }
+    return;
+  }
+  let d = 0; while (d < 5 && tileAt(tx, ty - d - 1)) d++;
+  const top = shade(t.ground, 0.05 - d * 0.06), bot = shade(t.ground, -0.04 - d * 0.06);
+  const g = ctx.createLinearGradient(0, Y, 0, Y + S); g.addColorStop(0, top); g.addColorStop(1, bot);
+  ctx.fillStyle = g;
+  pathRound(X, Y, S + 0.7, S + 0.7, !up && !lf ? 9 : 0, !up && !rt ? 9 : 0, !dn && !rt ? 7 : 0, !dn && !lf ? 7 : 0); ctx.fill();
+  // strata and pebbles
+  if ((ty + (tx >> 2)) % 3 === 0 && d > 0) { ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X, Y + 12 + h2(tx, ty) * 8); ctx.quadraticCurveTo(X + S / 2, Y + 8 + h2(ty, tx) * 12, X + S, Y + 12 + h2(tx + 1, ty) * 8); ctx.stroke(); }
+  for (let k = 0; k < 2; k++) if (h2(tx * 3 + k, ty * 7) > 0.55) {
+    const px = X + 5 + h2(tx + k, ty * 3) * (S - 10), py = Y + 6 + h2(tx * 5, ty + k) * (S - 12), r = 1.5 + h2(tx, ty + k * 9) * 2.2;
+    ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.beginPath(); ctx.ellipse(px + 0.6, py + 0.8, r, r * 0.8, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = rgba(t.ground, 1); ctx.fillStyle = shade(t.ground, 0.14 - d * 0.04); ctx.beginPath(); ctx.ellipse(px, py, r, r * 0.8, 0, 0, 6.283); ctx.fill();
+  }
+  // exposed sides
+  if (!lf) { const e = ctx.createLinearGradient(X, 0, X + 7, 0); e.addColorStop(0, "rgba(255,255,255,0.10)"); e.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = e; ctx.fillRect(X, Y + (up ? 0 : 6), 7, S - (up ? 0 : 6)); }
+  if (!rt) { const e = ctx.createLinearGradient(X + S - 8, 0, X + S, 0); e.addColorStop(0, "rgba(0,0,0,0)"); e.addColorStop(1, "rgba(0,0,0,0.28)"); ctx.fillStyle = e; ctx.fillRect(X + S - 8, Y + (up ? 0 : 6), 8, S - (up ? 0 : 6)); }
+  if (!dn) {
+    const e = ctx.createLinearGradient(0, Y + S - 10, 0, Y + S); e.addColorStop(0, "rgba(0,0,0,0)"); e.addColorStop(1, "rgba(0,0,0,0.35)"); ctx.fillStyle = e; ctx.fillRect(X + 2, Y + S - 10, S - 4, 10);
+    if (h2(tx, ty) > 0.5) { ctx.fillStyle = shade(t.ground, -0.1); ctx.beginPath(); ctx.moveTo(X + 10, Y + S); ctx.quadraticCurveTo(X + 13, Y + S + 7, X + 16, Y + S); ctx.fill(); }
+  }
+  if (v === 4) {
+    ctx.strokeStyle = "rgba(20,10,10,0.55)"; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(X + 4, Y + 9); ctx.lineTo(X + 13, Y + 17); ctx.lineTo(X + 10, Y + 27); ctx.moveTo(X + 13, Y + 17); ctx.lineTo(X + 24, Y + 14); ctx.lineTo(X + 29, Y + 24); ctx.stroke();
+  }
+  // grass lip and tufts
+  if (!up) {
+    const lip = ctx.createLinearGradient(0, Y, 0, Y + 9); lip.addColorStop(0, shade(t.top, 0.12)); lip.addColorStop(1, shade(t.top, -0.3));
+    ctx.fillStyle = lip; pathRound(X - (lf ? 0.5 : -1), Y - 1, S + (lf ? 0.5 : -1) + (rt ? 0.7 : -1), 9, !lf ? 6 : 0, !rt ? 6 : 0, 3, 3); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.fillRect(X + (lf ? 0 : 3), Y + 8, S - (lf ? 0 : 3) - (rt ? 0 : 3), 2);
+    ctx.fillStyle = shade(t.top, 0.05);
+    for (let k = 0; k < 4; k++) { const bx = X + 3 + k * 8 + h2(tx, k) * 4, bh = 3 + h2(tx + k, ty) * 4; ctx.beginPath(); ctx.moveTo(bx - 2, Y + 1); ctx.quadraticCurveTo(bx - 1 + h2(k, tx) * 2, Y - bh, bx + 1.5, Y - bh * 0.7); ctx.lineTo(bx + 2, Y + 1); ctx.fill(); }
+    ctx.fillStyle = "rgba(255,255,255,0.25)"; ctx.fillRect(X + (lf ? 0 : 5), Y - 0.5, S - (lf ? 0 : 5) - (rt ? 0 : 5), 1.2);
+  }
+}
+function renderChunk(ci) {
+  const k = chunkScale, c = document.createElement("canvas");
+  c.width = Math.ceil((CH + 1) * TILE * k); c.height = Math.ceil((ROWS * TILE + 12) * k);
+  const g = c.getContext("2d"); g.scale(k, k); g.translate(-ci * CH * TILE, 12);
+  const main = ctx; ctx = g;
+  try { for (let tx = ci * CH; tx <= Math.min(G.W - 1, ci * CH + CH); tx++) for (let ty = 0; ty < ROWS; ty++) drawTile(tx, ty); }
+  finally { ctx = main; }
+  return c;
+}
+function drawTerrain() {
+  const k = Math.min(2.4, BASESC * DPR);
+  if (Math.abs(k - chunkScale) > 0.01) { chunkCache.clear(); chunkScale = k; }
+  const span = CH * TILE, c0 = Math.max(0, Math.floor(G.cam / span)), c1 = Math.min(Math.floor((G.W - 1) / CH), Math.floor((G.cam + VW) / span));
+  for (let ci = c0; ci <= c1; ci++) {
+    let c = chunkCache.get(ci);
+    if (!c) c = renderChunk(ci); else chunkCache.delete(ci);
+    chunkCache.set(ci, c);
+    ctx.drawImage(c, ci * span, -12, (CH + 1) * TILE, ROWS * TILE + 12);
+  }
+  while (chunkCache.size > 6) chunkCache.delete(chunkCache.keys().next().value);
+  // pulsing glow on cracked tiles
+  const x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
+  for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) if (G.tiles[ty * G.W + tx] === 4) {
+    const X = tx * TILE, Y = ty * TILE;
+    ctx.strokeStyle = "rgba(255,236,190," + (0.35 + 0.3 * Math.sin(G.time * 3 + tx)) + ")"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(X + 4, Y + 9); ctx.lineTo(X + 13, Y + 17); ctx.lineTo(X + 10, Y + 27); ctx.moveTo(X + 13, Y + 17); ctx.lineTo(X + 24, Y + 14); ctx.lineTo(X + 29, Y + 24); ctx.stroke();
+  }
+}
+
+/* ---------- light and depth ---------- */
+function glow(x, y, r, color, a) {
+  if (r <= 0) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = a;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, color); g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore();
+}
+function surfaceBelow(x, y) {
+  const tx = Math.floor(x / TILE);
+  for (let ty = Math.max(0, Math.floor(y / TILE)); ty < ROWS; ty++) if (tileAt(tx, ty)) return ty * TILE;
+  for (const pl of G.plats) if (pl.alive && x > pl.x && x < pl.x + pl.w && pl.y >= y - 2 && pl.y < y + 200) return pl.y;
+  return null;
+}
+function drawShadow(x, y, w) {
+  const s = surfaceBelow(x, y); if (s == null) return;
+  const dist = s - y, k = clamp(1 - dist / 180, 0, 1); if (k <= 0) return;
+  ctx.fillStyle = "rgba(0,0,0," + (0.32 * k) + ")"; ctx.beginPath(); ctx.ellipse(x, s + 1, w * (0.6 + 0.4 * k), 3.5 * (0.6 + 0.4 * k), 0, 0, 6.283); ctx.fill();
+}
+function haze(y0, y1, color, a) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, rgba(color, 0)); g.addColorStop(1, rgba(color, a));
+  ctx.fillStyle = g; ctx.fillRect(0, y0, VW, y1 - y0);
+}
+function lightRays() {
+  if (G.t.skyline === "cave" || RM) return;
+  ctx.save(); ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 4; i++) {
+    const x = VW * (0.55 + i * 0.12) + Math.sin(G.time * 0.15 + i * 2) * 30, w = 40 + i * 14;
+    const g = ctx.createLinearGradient(0, OFFY, 0, OFFY + GR * TILE); g.addColorStop(0, "rgba(255,248,230,0.07)"); g.addColorStop(1, "rgba(255,248,230,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, OFFY); ctx.lineTo(x + w, OFFY); ctx.lineTo(x + w - 160, OFFY + GR * TILE); ctx.lineTo(x - 160 - w * 0.6, OFFY + GR * TILE); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function groundMist() {
+  ctx.save(); ctx.globalAlpha = 0.08;
+  for (let i = 0; i < 5; i++) {
+    const span = VW + 400, x = ((i * 233 - G.cam * 0.6 + G.time * (8 + i * 3)) % span + span) % span - 200;
+    const g = ctx.createRadialGradient(x, GR * TILE - 6, 0, x, GR * TILE - 6, 140); g.addColorStop(0, "#ffffff"); g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g; ctx.fillRect(x - 140, GR * TILE - 60, 280, 80);
+  }
+  ctx.restore();
+}
+function foreground() {
+  // dark silhouettes that pass in front of the world, for depth
+  const t = G.t, par = 1.3, y = OFFY + ROWS * TILE;
+  ctx.fillStyle = shade(t.ground, -0.55);
+  for (let i = -1; i < 12; i++) {
+    const cell = 170, base = Math.floor(G.cam * par / cell), ci = base + i, x = ci * cell - G.cam * par + h2(ci, 31) * 60;
+    if (h2(ci, 32) < 0.45) continue;
+    const h = 14 + h2(ci, 33) * 26, w = 30 + h2(ci, 34) * 50;
+    ctx.beginPath(); ctx.moveTo(x - w / 2, y + 2);
+    if (t.skyline === "trees" || t.particles === "leaves") { for (let k = 0; k <= 6; k++) ctx.lineTo(x - w / 2 + k * w / 6, y - (k % 2 ? h : h * 0.35)); }
+    else ctx.quadraticCurveTo(x, y - h * 1.6, x + w / 2, y + 2);
+    ctx.lineTo(x + w / 2, y + 2); ctx.closePath(); ctx.fill();
+  }
+}
+let vignetteCache = null;
+function vignette() {
+  const key = Math.round(VW) + "x" + Math.round(VH);
+  if (!vignetteCache || vignetteCache.key !== key) {
+    const g = ctx.createRadialGradient(VW / 2, VH * 0.55, Math.min(VW, VH) * 0.35, VW / 2, VH * 0.55, Math.hypot(VW, VH) * 0.62);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(6,4,12,0.42)");
+    vignetteCache = { key, g };
+  }
+  ctx.fillStyle = vignetteCache.g; ctx.fillRect(0, 0, VW, VH);
+}
+
+/* ---------- sprites with outline and hit flash ---------- */
+const off2 = document.createElement("canvas"), off2Ctx = off2.getContext("2d");
+function drawSprite(fn, cx, cy, size, flash, fcol, outline) {
+  const k = DPR * SC, S = Math.ceil(size * k);
+  for (const c of [off, off2]) if (c.width < S || c.height < S) { c.width = Math.max(c.width, S); c.height = Math.max(c.height, S); }
+  offCtx.setTransform(1, 0, 0, 1, 0, 0); offCtx.clearRect(0, 0, S, S);
+  offCtx.setTransform(k, 0, 0, k, (size / 2 - cx) * k, (size / 2 - cy) * k);
+  const main = ctx; ctx = offCtx; try { fn(); } finally { ctx = main; }
+  offCtx.setTransform(1, 0, 0, 1, 0, 0);
+  if (outline) {
+    off2Ctx.setTransform(1, 0, 0, 1, 0, 0); off2Ctx.clearRect(0, 0, S, S);
+    off2Ctx.globalCompositeOperation = "source-over"; off2Ctx.drawImage(off, 0, 0);
+    off2Ctx.globalCompositeOperation = "source-in"; off2Ctx.fillStyle = outline; off2Ctx.fillRect(0, 0, S, S);
+    off2Ctx.globalCompositeOperation = "source-over";
+    const o = 1.25, a = ctx.globalAlpha;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) ctx.drawImage(off2, 0, 0, S, S, cx - size / 2 + dx * o, cy - size / 2 + dy * o, size, size);
+    ctx.globalAlpha = a;
+  }
+  if (flash > 0.02) {
+    offCtx.globalCompositeOperation = "source-atop"; offCtx.globalAlpha = clamp(flash, 0, 1); offCtx.fillStyle = fcol || "#ffffff"; offCtx.fillRect(0, 0, S, S);
+    offCtx.globalCompositeOperation = "source-over"; offCtx.globalAlpha = 1;
+  }
+  ctx.drawImage(off, 0, 0, S, S, cx - size / 2, cy - size / 2, size, size);
+}
+
+/* ---------- timed hazards: pulse spikes and falling rocks ---------- */
+function pulseState(pu) { const ph = ((G.time + pu.ph) % pu.per) / pu.per; return ph < 0.42 ? "down" : ph < 0.56 ? "warn" : "up"; }
+function updateHazards(dt) {
+  const p = G.player;
+  for (const pu of G.pulses) if (pulseState(pu) === "up" && overlap(p, { x: pu.x + 2, y: pu.y, w: pu.w - 4, h: pu.h })) hurt(p.x + p.w / 2 + (p.vx >= 0 ? -10 : 10), true);
+  for (const dr of G.droppers) {
+    dr.t += dt;
+    if (dr.state === "hang" && Math.abs(p.x + p.w / 2 - dr.x) < 46 && p.y > dr.y) { dr.state = "shake"; dr.t = 0; }
+    else if (dr.state === "shake" && dr.t > 0.42) { dr.state = "fall"; dr.vy = 0; }
+    else if (dr.state === "fall") {
+      dr.vy = Math.min(dr.vy + 2000 * dt, 1100); dr.y += dr.vy * dt;
+      if (Math.abs(p.x + p.w / 2 - dr.x) < 16 && p.y < dr.y + 12 && p.y + p.h > dr.y - 12) { hurt(dr.x, true); }
+      const ty = Math.floor((dr.y + 12) / TILE);
+      if (ty >= ROWS || tileAt(Math.floor(dr.x / TILE), ty)) { dr.state = "gone"; dr.t = 0; G.shake = Math.max(G.shake, 0.15); burst(dr.x, dr.y, "#9a8f86", 14, { size: 3 }); dust(dr.x, Math.min(dr.y + 10, ROWS * TILE), 6); }
+    }
+    else if (dr.state === "gone" && dr.t > 3.5) { dr.state = "hang"; dr.y = dr.y0; dr.t = 0; }
+  }
+}
+function drawHazards() {
+  for (const pu of G.pulses) {
+    if (pu.x + pu.w < G.cam - 20 || pu.x > G.cam + VW + 20) continue;
+    const st = pulseState(pu);
+    ctx.fillStyle = "#2a2434"; rr(pu.x, pu.y + pu.h - 4, pu.w, 5, 2); ctx.fill();
+    for (let x = pu.x + 2; x < pu.x + pu.w - 4; x += 8) { ctx.fillStyle = st === "warn" ? "#ff8f80" : "#4a4458"; ctx.fillRect(x + 3, pu.y + pu.h - 3, 2, 2); }
+    if (st === "down") continue;
+    const h = st === "up" ? pu.h : pu.h * 0.3 + Math.sin(G.time * 40) * 1.5;
+    if (st === "warn") glow(pu.x + pu.w / 2, pu.y + pu.h, pu.w * 0.6, "rgba(255,90,80,0.7)", 0.6);
+    ctx.fillStyle = st === "up" ? "#e8e0f0" : "#ff9a8e"; ctx.beginPath();
+    for (let x = pu.x + 2; x < pu.x + pu.w - 4; x += 8) { ctx.moveTo(x, pu.y + pu.h); ctx.lineTo(x + 4, pu.y + pu.h - h); ctx.lineTo(x + 8, pu.y + pu.h); }
+    ctx.fill();
+  }
+  for (const dr of G.droppers) {
+    if (dr.x < G.cam - 30 || dr.x > G.cam + VW + 30) continue;
+    if (dr.state === "gone") continue;
+    const jx = dr.state === "shake" ? Math.sin(G.time * 70) * 2 : 0;
+    if (dr.state !== "fall") { ctx.strokeStyle = "rgba(160,150,140,0.6)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(dr.x, 0); ctx.lineTo(dr.x + jx, dr.y - 10); ctx.stroke(); }
+    else { ctx.fillStyle = "rgba(0,0,0,0.25)"; const s = surfaceBelow(dr.x, dr.y); if (s != null) { ctx.beginPath(); ctx.ellipse(dr.x, s, 12, 3, 0, 0, 6.283); ctx.fill(); } }
+    const g = ctx.createRadialGradient(dr.x - 4 + jx, dr.y - 4, 2, dr.x + jx, dr.y, 14); g.addColorStop(0, "#b8ada4"); g.addColorStop(1, "#5a524c");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(dr.x - 12 + jx, dr.y - 6); ctx.lineTo(dr.x - 4 + jx, dr.y - 13); ctx.lineTo(dr.x + 10 + jx, dr.y - 9); ctx.lineTo(dr.x + 13 + jx, dr.y + 4); ctx.lineTo(dr.x + jx, dr.y + 13); ctx.lineTo(dr.x - 11 + jx, dr.y + 6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.4)"; ctx.lineWidth = 1; ctx.stroke();
+    if (dr.state === "shake") label("!", dr.x, dr.y - 22, "#ff8f80", 11);
+  }
+}
+
+/* ---------- true/false lanes inside chases ---------- */
+let forkShown = null;
+function forkLane(f) { const p = G.player; return p.y + p.h <= (GR - 4) * TILE + 3 ? "upper" : "lower"; }
+function updateForks() {
+  const p = G.player; let active = null;
+  for (const f of G.forks) {
+    if (f.resolved) continue;
+    if (p.x > f.x0 - 6 * TILE && p.x < f.vx + TILE) active = f;
+    const lane = forkLane(f), right = f.tf[1] ? lane === "upper" : lane === "lower";
+    if (p.x + p.w >= f.vx - 2 && p.x <= f.vx + TILE) {
+      if (!right && !f.wrong) {
+        f.wrong = true; f.flash = 1;
+        knowledgeHit((f.tf[1] ? "It's TRUE" : "It's FALSE") + ". " + f.tf[2] + " Go back and take the other lane!");
+      }
+    }
+    if (p.x > f.vx + TILE + 4) {
+      f.resolved = true;
+      if (!f.wrong) { rightAnswer(p.x, p.y - 20); gainXP(20, p.x, p.y - 50); toast((f.tf[1] ? "TRUE. " : "FALSE. ") + f.tf[2], "good", 5000); burst(f.vx + 16, p.y, G.t.accent, 20); }
+    }
+  }
+  if (active !== forkShown) {
+    forkShown = active;
+    if (!leapShown) { $("leapCard").hidden = !active; $("stage").classList.toggle("leaping", !!active); if (active) renderForkCard(active); }
+  }
+}
+function renderForkCard(f) {
+  const card = $("leapCard"); card.textContent = "";
+  card.append(el("div", { class: "lrow" }, el("span", { text: "True or false · " + G.chase.name + " is behind you" })),
+    el("div", { class: "lq", text: "“" + f.tf[0] + "”" }),
+    el("ol", {}, el("li", {}, el("b", { text: "↑" }), el("span", { text: "TRUE: climb to the high road" })), el("li", {}, el("b", { text: "↓" }), el("span", { text: "FALSE: stay on the low road" }))));
+}
+function drawForks() {
+  for (const f of G.forks) {
+    if (f.vx < G.cam - 80 || f.x0 > G.cam + VW + 80) continue;
+    f.flash = Math.max(0, (f.flash || 0) - 1 / 60);
+    const lanes = [["upper", 0, (GR - 4) * TILE], ["lower", (GR - 3) * TILE, GR * TILE]];
+    for (const [ln, y0, y1] of lanes) {
+      const passable = (ln === "upper") === !!f.tf[1];
+      const revealed = f.resolved || f.wrong;
+      const col = revealed ? (passable ? "143,230,160" : "255,110,100") : "200,190,255";
+      const g = ctx.createLinearGradient(f.vx, 0, f.vx + TILE, 0); g.addColorStop(0, "rgba(" + col + ",0.05)"); g.addColorStop(0.5, "rgba(" + col + "," + (revealed && passable ? 0.12 : 0.42 + (ln === "lower" ? 0 : 0) + (f.flash && !passable ? 0.4 : 0)) + ")"); g.addColorStop(1, "rgba(" + col + ",0.05)");
+      ctx.fillStyle = g; ctx.fillRect(f.vx + 2, y0, TILE - 4, y1 - y0);
+      for (let i = 0; i < 4; i++) { const yy = y0 + ((G.time * 50 + i * 37) % Math.max(10, y1 - y0)); ctx.fillStyle = "rgba(" + col + ",0.6)"; ctx.fillRect(f.vx + 8 + (i % 3) * 6, yy, 2, 7); }
+    }
+    const lx = (f.x0 + 4) * 1;
+    bigText("TRUE ↑", lx * 1 + TILE * 3, (GR - 4) * TILE - 26, 16, "rgba(190,255,200,0.9)");
+    bigText("FALSE ↓", lx * 1 + TILE * 3, (GR - 1) * TILE + 6, 14, "rgba(255,200,190,0.9)");
+  }
+}
+
+/* ================= character progression: XP from learning, stats, equipment, riddle chests, fact wisps =================
+   Loaded last. Character data lives in P.char and is saved with the rest of your progress. */
+
+const STATS = [
+  ["vit", "Vitality", "More hearts: +1 heart for every 2 points."],
+  ["agi", "Agility", "Run faster, dash further and recover your dash sooner."],
+  ["mig", "Might", "Wider ground pound, longer staggers. At 5+, a full-marks recall strike hits the guardian twice."],
+  ["wis", "Wisdom", "+1.5 s on every gate timer, and +1 Insight capacity for every 4 points."]
+];
+const SLOTS = [["head", "Head"], ["body", "Body"], ["hands", "Hands"], ["feet", "Feet"], ["charm", "Charm"], ["tool", "Tool"]];
+const PERKS = {
+  triple: "Triple jump: one extra jump in the air.",
+  dash2: "Two air dashes before landing.",
+  ward: "Hazard ward: the first hit after each banner is absorbed.",
+  regen: "Each new banner restores a heart.",
+  insight: "+1 Insight capacity.",
+  timer: "+10 s on every gate timer.",
+  startI: "Start each realm with +1 Insight.",
+  reflect: "Reflected shots stagger the guardian for longer."
+};
+/* Two pieces per realm: one in its riddle chest, one dropped by its guardian. */
+const ITEMS = {
+  moonBoots:   { name: "Moonsilver Boots", slot: "feet", stats: { agi: 2 }, realm: "s1", src: "chest" },
+  ogreCoat:    { name: "Ogre-hide Coat", slot: "body", stats: { vit: 2 }, realm: "s1", src: "boss" },
+  monocle:     { name: "Alchemist's Monocle", slot: "head", stats: { wis: 2 }, realm: "s2", src: "chest" },
+  slimeGloves: { name: "Slime-proof Gloves", slot: "hands", stats: { vit: 1 }, perk: "ward", realm: "s2", src: "boss" },
+  ironTonic:   { name: "Iron Tonic", slot: "charm", stats: { vit: 1 }, perk: "regen", realm: "s3", src: "chest" },
+  golemFists:  { name: "Golem Gauntlets", slot: "hands", stats: { mig: 2 }, realm: "s3", src: "boss" },
+  thornBoots:  { name: "Thornwalker Boots", slot: "feet", stats: { agi: 1 }, perk: "triple", realm: "s4", src: "chest" },
+  wyrmCoat:    { name: "Wyrm-scale Coat", slot: "body", stats: { vit: 1, mig: 1 }, realm: "s4", src: "boss" },
+  loupe:       { name: "Surgeon's Loupe", slot: "head", stats: { wis: 1 }, perk: "timer", realm: "s5", src: "chest" },
+  clotHammer:  { name: "Clot-breaker Hammer", slot: "tool", stats: { mig: 2 }, realm: "s5", src: "boss" },
+  feather:     { name: "Feather Pendant", slot: "charm", stats: { agi: 1, wis: 1 }, realm: "s6", src: "chest" },
+  spireCape:   { name: "Spire Cape", slot: "body", stats: { agi: 1, vit: 1 }, realm: "s6", src: "boss" },
+  ribbon:      { name: "Twister Ribbon", slot: "charm", stats: { wis: 1 }, perk: "startI", realm: "s7", src: "chest" },
+  fang:        { name: "Serpent-fang Scalpel", slot: "tool", stats: { mig: 1 }, perk: "reflect", realm: "s7", src: "boss" },
+  diverHelm:   { name: "Diver's Helm", slot: "head", stats: { vit: 1, wis: 1 }, realm: "s8", src: "chest" },
+  finBoots:    { name: "Leviathan Fins", slot: "feet", stats: { agi: 2 }, perk: "dash2", realm: "s8", src: "boss" },
+  emberCrown:  { name: "Ember Crown", slot: "head", stats: { wis: 2, mig: 1 }, realm: "s9", src: "chest" },
+  oracleEye:   { name: "Oracle's Eye", slot: "charm", stats: { wis: 2 }, perk: "insight", realm: "s9", src: "boss" }
+};
+const itemFor = (realm, src) => Object.keys(ITEMS).find(id => ITEMS[id].realm === realm && ITEMS[id].src === src);
+
+function charData() {
+  if (!P.char) P.char = { xp: 0, level: 1, points: 3, stats: { vit: 2, agi: 0, mig: 0, wis: 0 }, items: [], equip: {} };
+  return P.char;
+}
+const xpNeed = lv => 120 + 80 * (lv - 1);
+function totalStats() {
+  const c = charData(), s = { ...c.stats };
+  for (const id of Object.values(c.equip)) { const it = ITEMS[id]; if (it) for (const k in it.stats) s[k] += it.stats[k]; }
+  return s;
+}
+function perkSet() { const c = charData(), p = new Set(); for (const id of Object.values(c.equip)) if (ITEMS[id] && ITEMS[id].perk) p.add(ITEMS[id].perk); return p; }
+function derived() {
+  const s = totalStats(), pk = perkSet();
+  return {
+    maxH: clamp(4 + Math.floor(s.vit / 2), 3, 10), speed: 195 + 5 * s.agi, dashSpeed: 500 + 12 * s.agi, dashCd: Math.max(0.16, 0.34 - 0.012 * s.agi),
+    airJumps: pk.has("triple") ? 2 : 1, airDashes: pk.has("dash2") ? 2 : 1, poundR: 60 + 8 * s.mig, bonusHit: s.mig >= 5,
+    stagger: 2.2 + 0.15 * s.mig + (pk.has("reflect") ? 1 : 0), maxI: 3 + Math.floor(s.wis / 4) + (pk.has("insight") ? 1 : 0),
+    timer: 1.5 * s.wis + (pk.has("timer") ? 10 : 0), startI: 1 + (pk.has("startI") ? 1 : 0), ward: pk.has("ward"), regen: pk.has("regen")
+  };
+}
+function applyDerived() {
+  if (!G) return;
+  const before = G.maxH || 0;
+  G.d = derived(); G.maxH = G.d.maxH;
+  if (before && G.maxH > before) G.hearts = Math.min(G.maxH, G.hearts + (G.maxH - before));
+  G.hearts = Math.min(G.hearts, G.maxH); G.insight = Math.min(G.insight, G.d.maxI);
+  heartsShown = G.hearts; renderHearts(); renderInsight();
+}
+function statText(stats) { return Object.entries(stats || {}).map(([k, v]) => "+" + v + " " + STATS.find(s => s[0] === k)[1]).join(", "); }
+
+/* XP: most of it comes from learning */
+function gainXP(n, x, y) {
+  const c = charData(); c.xp += n;
+  if (G && x != null) G.pops.push({ x, y, text: "+" + n + " XP", life: 1.3, xp: true });
+  let up = 0; while (c.xp >= xpNeed(c.level)) { c.xp -= xpNeed(c.level); c.level++; c.points++; up++; }
+  if (up) {
+    toast("Level " + c.level + "! You have " + c.points + " stat point" + (c.points > 1 ? "s" : "") + " to spend. Press C or open Character.", "good", 5000);
+    if (G) { const p = G.player; ring(p.x + p.w / 2, p.y + p.h / 2, "#ffe9a8", 300); burst(p.x + p.w / 2, p.y + p.h / 2, "#ffe9a8", 30); }
+  }
+  save(); renderLevelChip();
+}
+function renderLevelChip() {
+  const c = charData();
+  const chip = $("levelChip"); if (chip) { chip.querySelector("b").textContent = "Lv " + c.level + (c.points ? " +" + c.points : ""); chip.querySelector("i").style.width = (c.xp / xpNeed(c.level) * 100) + "%"; chip.classList.toggle("hot", c.points > 0); }
+  const mb = $("charBtn"); if (mb) mb.textContent = "Character · Lv " + c.level + (c.points ? " · " + c.points + " point" + (c.points > 1 ? "s" : "") + " to spend" : "");
+}
+
+/* equipment */
+function giveItem(id) {
+  const c = charData(), it = ITEMS[id];
+  if (c.items.includes(id)) { gainXP(60); if (G && G.hearts < G.maxH) { G.hearts++; renderHearts(); } toast("You already own the " + it.name + ". +60 XP instead.", "good"); return; }
+  c.items.push(id);
+  const empty = !c.equip[it.slot];
+  if (empty) c.equip[it.slot] = id;
+  save(); applyDerived(); renderLevelChip();
+  whenFree(() => showModal(p => {
+    const cont = el("button", { type: "button", class: "btn primary", text: "Onward", onclick: closeModal });
+    p.append(el("span", { class: "kicker", text: "New equipment · " + SLOTS.find(s => s[0] === it.slot)[1] }), el("h2", { text: it.name }),
+      el("div", { class: "model" }, el("span", { class: "lbl", text: "Gives" }), el("p", { text: [statText(it.stats), it.perk ? PERKS[it.perk] : null].filter(Boolean).join(". ") })),
+      el("p", { class: "muted", text: empty ? "Equipped automatically." : "Your " + SLOTS.find(s => s[0] === it.slot)[1].toLowerCase() + " slot is taken. Swap it in from the character sheet." }),
+      el("div", { class: "actions" }, cont, el("button", { type: "button", class: "btn", text: "Character sheet", onclick: () => openCharacter(closeModal) })));
+    modalKeys = e => { if (e.key === "Enter") { cont.click(); return true; } return false; };
+  }));
+}
+
+/* character sheet */
+function openCharacter(back) {
+  const c = charData();
+  showModal(p => {
+    const s = totalStats(), d = derived();
+    const xpbar = el("div", { class: "tbar" }, el("i", { style: "width:" + (c.xp / xpNeed(c.level) * 100) + "%" }), el("span", { text: c.xp + " / " + xpNeed(c.level) + " XP" }));
+    const rows = el("div", { class: "statrows" });
+    for (const [k, name, desc] of STATS) {
+      const bonus = s[k] - c.stats[k];
+      const plus = el("button", { type: "button", class: "btn", text: "+", "aria-label": "Add a point to " + name, onclick: () => { if (c.points <= 0) return; c.points--; c.stats[k]++; save(); applyDerived(); renderLevelChip(); openCharacter(back); } });
+      if (c.points <= 0) plus.disabled = true;
+      rows.append(el("div", { class: "statrow" }, el("div", {}, el("b", { text: name + " " + s[k] }), bonus ? el("span", { class: "muted", text: " (" + c.stats[k] + " + " + bonus + " from gear)" }) : null, el("div", { class: "muted small", text: desc })), plus));
+    }
+    const eff = el("p", { class: "muted small", text: "Now: " + d.maxH + " hearts · speed " + d.speed + " · dash " + d.dashSpeed + " · pound radius " + d.poundR + " · Insight " + d.maxI + " · gate timers +" + d.timer.toFixed(1) + " s" + (d.bonusHit ? " · double strikes" : "") });
+    const slots = el("div", { class: "slots" });
+    for (const [sk, sname] of SLOTS) {
+      const id = c.equip[sk], it = ITEMS[id];
+      slots.append(el("div", { class: "slot" + (it ? " full" : "") }, el("span", { class: "lbl", text: sname }), el("b", { text: it ? it.name : "Empty" }), it ? el("span", { class: "muted small", text: [statText(it.stats), it.perk ? PERKS[it.perk] : null].filter(Boolean).join(". ") }) : null));
+    }
+    const inv = el("div", { class: "inv" });
+    const owned = Object.keys(ITEMS).filter(id => c.items.includes(id));
+    if (!owned.length) inv.append(el("p", { class: "muted", text: "No equipment yet. Open riddle chests and defeat guardians to find it." }));
+    for (const id of owned) {
+      const it = ITEMS[id], on = c.equip[it.slot] === id;
+      inv.append(el("div", { class: "invrow" }, el("div", {}, el("b", { text: it.name }), el("span", { class: "muted small", text: " · " + SLOTS.find(x => x[0] === it.slot)[1] + " · " + [statText(it.stats), it.perk ? PERKS[it.perk] : null].filter(Boolean).join(". ") })),
+        el("button", { type: "button", class: "btn" + (on ? " quiet" : ""), text: on ? "Unequip" : "Equip", onclick: () => { if (on) delete c.equip[it.slot]; else c.equip[it.slot] = id; save(); applyDerived(); openCharacter(back); } })));
+    }
+    const found = owned.length, total = Object.keys(ITEMS).length;
+    p.append(el("span", { class: "kicker", text: "Character" }), el("h2", { text: "Registrar · Level " + c.level }), xpbar,
+      el("p", { class: "muted small", text: "XP comes mostly from learning: right answers, solved rooms, pearls, guardian recall, true fact wisps, and the Review Shrine." }),
+      el("h3", { text: c.points ? c.points + " stat point" + (c.points > 1 ? "s" : "") + " to spend" : "Stats" }), rows, eff,
+      el("h3", { text: "Equipped" }), slots,
+      el("h3", { text: "Collection · " + found + " of " + total }), inv,
+      el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", text: "Done", onclick: () => back ? back() : closeModal() })));
+  });
+}
+
+/* riddle chests: answer to open */
+function chestInteract() {
+  if (!G || !G.chests) return false;
+  const p = G.player, cx = p.x + p.w / 2;
+  const ch = G.chests.find(c => Math.abs(c.x - cx) < 34 && Math.abs(c.y - (p.y + p.h)) < 40);
+  if (!ch) return false;
+  if (ch.state === "open") return true;
+  if (ch.state === "sealed") { toast("The lock is reshuffling. Try again in a moment."); return true; }
+  const all = G.L.segs.filter(s => (s.t === "gate" || s.t === "leap") && s.q.k !== "multi").map(s => s.id);
+  const fresh = all.filter(id => !ch.asked.includes(id)), pick = fresh.length ? fresh : all;
+  const id = pick[Math.floor(Math.random() * pick.length)];
+  ch.asked.push(id); ch.busy = true;
+  askGate(QB[id], "Riddle chest · answer to open it").then(ok => {
+    if (!G) return;
+    ch.busy = false;
+    if (ok) { srsHit(id); ch.state = "open"; ch.t = 0; burst(ch.x, ch.y - 14, "#ffe9a8", 30); ring(ch.x, ch.y - 10, "#ffe9a8", 240); gainXP(40, ch.x, ch.y - 40); giveItem(itemFor(G.L.id, "chest")); }
+    else { srsMiss(id); G.missed.push(id); ch.state = "sealed"; ch.t = 0; knowledgeHit("The riddle lock snaps shut. It will reshuffle in a few seconds."); }
+  });
+  return true;
+}
+function updateChests(dt) {
+  for (const ch of G.chests) { ch.t += dt; if (ch.state === "sealed" && ch.t > 6) { ch.state = "locked"; toast("A riddle chest has a new lock."); } }
+  const l = G.loot;
+  if (l && !l.taken) { const p = G.player; l.t += dt; if (Math.hypot(p.x + p.w / 2 - l.x, p.y + p.h / 2 - l.y) < 26) { l.taken = true; burst(l.x, l.y, "#ffe9a8", 30); giveItem(l.id); } }
+}
+function drawChests() {
+  for (const ch of G.chests) {
+    if (ch.x < G.cam - 40 || ch.x > G.cam + VW + 40) continue;
+    const x = ch.x, y = ch.y, open = ch.state === "open";
+    if (!open) glow(x, y - 12, 40, ch.state === "sealed" ? "#ff6a5a" : "#ffd27a", 0.35 + 0.1 * Math.sin(G.time * 3));
+    ctx.fillStyle = "#5a3a22"; rr(x - 15, y - 18, 30, 18, 3); ctx.fill();
+    ctx.fillStyle = "#c9a26a"; ctx.fillRect(x - 15, y - 12, 30, 3); ctx.fillRect(x - 2, y - 18, 4, 18);
+    ctx.save(); ctx.translate(x - 15, y - 18); if (open) ctx.rotate(-0.9);
+    ctx.fillStyle = "#6e4a2c"; rr(0, -10, 30, 11, 5); ctx.fill(); ctx.fillStyle = "#c9a26a"; ctx.fillRect(13, -10, 4, 11); ctx.restore();
+    if (!open) { ctx.fillStyle = ch.state === "sealed" ? "#ff8f80" : "#ffe9a8"; rr(x - 4, y - 14, 8, 7, 2); ctx.fill(); }
+    label(open ? "Opened" : ch.state === "sealed" ? "Sealed" : "Riddle chest · ↓", x, y - 34, open ? "#b9ad95" : "#ffe9a8", 9);
+  }
+  const l = G.loot;
+  if (l && !l.taken) {
+    const y = l.y + Math.sin(G.time * 3) * 4;
+    glow(l.x, y, 46, "#ffe9a8", 0.55);
+    ctx.save(); ctx.translate(l.x, y); ctx.rotate(Math.sin(G.time * 2) * 0.2);
+    ctx.fillStyle = "#ffe9a8"; ctx.beginPath(); for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283, r = i % 2 ? 6 : 14; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.restore();
+    label(ITEMS[l.id].name, l.x, y - 26, "#ffe9a8", 10);
+  }
+}
+
+/* fact wisps: stomp the true ones */
+function drawFact(e) {
+  const cx = e.x + e.w / 2, cy = e.y + e.h / 2, b = Math.sin(e.t * 2) * 2;
+  glow(cx, cy, 30, "#cfc8ff", 0.4);
+  ctx.fillStyle = "#e8e2ff"; rr(cx - 11, cy - 8 + b, 22, 16, 4); ctx.fill();
+  ctx.fillStyle = "#b8aee8"; ctx.beginPath(); ctx.arc(cx - 11, cy + b, 4, 0, 6.283); ctx.arc(cx + 11, cy + b, 4, 0, 6.283); ctx.fill();
+  ctx.fillStyle = "#4a3a7a"; ctx.font = "700 12px Cinzel, Georgia, serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("?", cx, cy + b + 1);
+  const words = e.fact[0];
+  label(words, cx, cy - 18 + b, "#ece6ff", 9);
+}
+function stompFact(e) {
+  e.alive = false; e.dead = { t: 0.9, how: "squash" };
+  const [s, isTrue, why] = e.fact;
+  if (isTrue) { burst(e.x + e.w / 2, e.y, "#cfc8ff", 20); rightAnswer(e.x, e.y - 20); gainXP(15, e.x, e.y - 40); toast("True. " + why, "good", 5000); }
+  else { burst(e.x + e.w / 2, e.y, "#ff8f80", 16); knowledgeHit("False: “" + s + "”. " + why); }
+}
 
 </script>

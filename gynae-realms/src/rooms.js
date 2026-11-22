@@ -88,6 +88,7 @@ function roomInteract() {
 function roomReset(r, quiet) {
   if (!r || r.solved) return;
   let k = 0; for (let y = 0; y < ROWS; y++) for (let x = r.c0; x < r.c1; x++) G.tiles[y * G.W + x] = r.snap[k++];
+  for (let x = r.c0; x < r.c1; x += 8) markDirty(x); markDirty(r.c1 - 1);
   G.carry = null;
   r.st = r.impl.init(r);
   const p = G.player; p.x = r.x0 + 8; p.y = FL - p.h - 1; p.vx = p.vy = 0; p.cape = null;
@@ -103,7 +104,7 @@ function roomPushBack(r, msg) {
 function whenFree(fn) { if (!G) return; if (!modalOpen) fn(); else setTimeout(() => whenFree(fn), 300); }
 function solveRoom(r) {
   if (r.solved) return;
-  r.solved = true; G.carry = null;
+  r.solved = true; G.carry = null; gainXP(80, r.x0 + ROOM_W * TILE / 2, 140);
   openDoor(r.door); addScore(400, r.door.col * TILE, GR * TILE - 120); gainInsight(1);
   burst(r.x0 + ROOM_W * TILE / 2, 120, G.t.accent, 40, { size: 3 }); G.shake = 0.3; hitstop(0.1);
   $("roomCard").hidden = true; $("stage").classList.remove("carded");

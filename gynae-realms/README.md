@@ -24,6 +24,17 @@ A browser platformer for studying **Week 1: General Gynae** (RANZCOG OSCE practi
 - **Guardians** ask open recall (OSCE Recall Drill plus station notes), typed or dictated and marked out of 2 by Claude. At half health they enrage: a spike crown that only a ground pound breaks, shockwaves or shot rings.
 - Where the 2023 deck is out of date (letrozole first line, tamoxifen 20 mg, danazol, evening primrose oil, egg-collection timing, MHT window, empirical endometriosis treatment), the game teaches current guidance and shows what the notes said.
 
+## Thinking while you play
+- **Fact wisps** float through each realm carrying a short statement. Stomp the TRUE ones (XP, Insight); stomping a FALSE one costs a heart and shows the correction.
+- **True-or-false lanes** inside every chase: a statement appears, and you climb to the high road for TRUE or stay low for FALSE. The wrong lane is a dead end while the chase closes in.
+- **Timed gates** (longer with Wisdom), plus timed hazards (pulse spikes, falling rocks) and parrying: dash into a guardian's shot to reflect it and stagger the guardian.
+
+## Character development
+XP comes mostly from learning: right answers, solved rooms, pearls, guardian recall, true wisps, and the Review Shrine. Each level gives a stat point:
+- **Vitality**: +1 heart per 2 points. **Agility**: run speed, dash speed and recovery. **Might**: pound radius, stagger length, and at 5+ a full-marks recall strike hits twice. **Wisdom**: longer gate timers and more Insight.
+
+Eighteen pieces of equipment across six slots (head, body, hands, feet, charm, tool), two per realm: one in a riddle chest you open by answering a question, one dropped by the guardian. Some carry perks (triple jump, two air dashes, a hazard ward, heart regeneration at banners, extra Insight). Press C or open Character from the map to spend points and swap gear. Character data is saved with your progress.
+
 ## Puzzle rooms
 One single-screen room per realm, after the chase. The camera locks and zooms so the whole puzzle fits. Press ↓ on the ground to pull levers, pick up and place items; R resets. Each room turns one fact into a machine, and wrong moves play out their consequence:
 
@@ -49,7 +60,9 @@ Double jump, wall slide and wall jump, air dash, ground pound. Wall-jump shafts,
 - `src/game.html` – page markup and styles.
 - `src/engine.js` – level generator, physics, rendering, dialogs and progress.
 - `src/rooms.js` – the puzzle-room framework and the nine room machines.
+- `src/polish.js` – terrain rendering (cached chunks), lighting and depth, sprite outlines, timed hazards, true/false lanes.
+- `src/progress.js` – XP, levels, stats, equipment, riddle chests, guardian loot, fact wisps and the character sheet.
 - `drill-week1.json` – week-one questions extracted from the OSCE Recall Drill (`tools/extract-drill.mjs`).
 - `index.html` – built single-file game: `node tools/build.mjs`.
 
-Open `index.html` in any browser. Controls: arrow keys or A/D to move, Space/W/↑ to jump, Shift or X to dash, ↓ or S to ground-pound, H to spend Insight at a leap, E to reread a sign; on-screen buttons on phones.
+Open `index.html` in any browser. Controls: arrow keys or A/D to move, Space/W/↑ to jump, Shift or X to dash, ↓ or S to ground-pound in the air (or use levers, items and chests on the ground), H to spend Insight at a leap, E to reread a sign, C for the character sheet, R to reset a puzzle room; on-screen buttons on phones.
