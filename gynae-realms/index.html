@@ -78,6 +78,7 @@ h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: c
 #hearts { display: flex; gap: 3px; background: rgba(18, 15, 26, .6); padding: 5px 8px; border-radius: 8px; }
 #hearts svg { width: 18px; height: 18px; display: block; }
 .chip { background: rgba(18, 15, 26, .72); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 44vw; }
+p.mono { font-family: var(--font-mono); font-size: 14px; overflow-wrap: anywhere; }
 .chip.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .chip.warn { border-color: var(--bad); color: var(--bad); }
 #bossbar { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(420px, 80%); text-align: center; pointer-events: none; }
@@ -1308,7 +1309,7 @@ function startLevel(L) {
   lastFrame = performance.now();
   toast(L.station + ". Read the signs: the gates and leaps ask about them.");
 }
-function quitToMap() { G = null; closeModal(); $("gameScreen").hidden = true; $("mapScreen").hidden = false; renderMap(); }
+function quitToMap() { setCrumb(null); G = null; closeModal(); $("gameScreen").hidden = true; $("mapScreen").hidden = false; renderMap(); }
 
 /* ================= HUD ================= */
 const HEART_FULL = '<svg viewBox="0 0 24 24"><path fill="#ff7a8a" stroke="#2a0a10" stroke-width="1.2" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.5h2c.7-1.3 2.2-2.5 4.3-2.5 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
@@ -1996,7 +1997,7 @@ function drawFlash(fn, cx, cy, size, flash, color) {
 let VW = 480, VH = 384, SC = 1, OFFY = 0, DPR = 1, STW = 480, STH = 384, BASESC = 1;
 function resize() {
   const r = $("stage").getBoundingClientRect();
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = Math.min(window.devicePixelRatio || 1, lsGet(LITE) ? 1 : 2);
   cv.width = Math.max(1, Math.round(r.width * DPR)); cv.height = Math.max(1, Math.round(r.height * DPR));
   SC = Math.min(r.height / (ROWS * TILE), r.width / (11 * TILE));
   STW = r.width; STH = r.height; BASESC = SC;
@@ -2494,7 +2495,7 @@ function frame(now) {
   render();
 }
 requestAnimationFrame(frame);
-setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); }, 0);  // after every script has loaded
+setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); checkCrumb(); }, 0);  // after every script has loaded
 
 /* ================= puzzle rooms =================
    One single-screen room per realm, placed after the chase. The camera locks and zooms so the whole room is visible.
@@ -3206,13 +3207,14 @@ function shade(c, t) { return t >= 0 ? mix(c, "#ffffff", Math.min(1, t)) : mix(c
 function rgba(c, a) { const A = hexRgb(c); return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + a + ")"; }
 
 /* ---------- terrain: hand-shaded tiles, pre-rendered into cached chunks ---------- */
-const CH = 16, chunkCache = new Map();
+const CH = 16, chunkCache = new Map(), chunkPool = [];  // canvases are reused: phones free discarded canvases slowly
 let chunkScale = 0;
 function markDirty(tx) {
   const ci = Math.floor(tx / CH);
-  chunkCache.delete(ci); chunkCache.delete(ci - 1); chunkCache.delete(ci + 1);
+  dropChunk(ci); dropChunk(ci - 1); dropChunk(ci + 1);
 }
-function clearChunks() { chunkCache.clear(); }
+function dropChunk(ci) { const c = chunkCache.get(ci); if (c) { chunkCache.delete(ci); if (chunkPool.length < 8) chunkPool.push(c); } }
+function clearChunks() { for (const ci of [...chunkCache.keys()]) dropChunk(ci); }
 function tileAt(tx, ty) {
   if (tx < 0 || tx >= G.W) return 1;
   if (ty < 0) return 0;
@@ -3274,9 +3276,10 @@ function drawTile(tx, ty) {
   }
 }
 function renderChunk(ci) {
-  const k = chunkScale, c = document.createElement("canvas");
-  c.width = Math.ceil((CH + 1) * TILE * k); c.height = Math.ceil((ROWS * TILE + 12) * k);
-  const g = c.getContext("2d"); g.scale(k, k); g.translate(-ci * CH * TILE, 12);
+  const k = chunkScale, c = chunkPool.pop() || document.createElement("canvas");
+  const w = Math.ceil((CH + 1) * TILE * k), h = Math.ceil((ROWS * TILE + 12) * k);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.scale(k, k); g.translate(-ci * CH * TILE, 12);
   const main = ctx; ctx = g;
   try { for (let tx = ci * CH; tx <= Math.min(G.W - 1, ci * CH + CH); tx++) for (let ty = 0; ty < ROWS; ty++) drawTile(tx, ty); }
   finally { ctx = main; }
@@ -3284,7 +3287,7 @@ function renderChunk(ci) {
 }
 function drawTerrain() {
   const k = Math.min(2.4, BASESC * DPR);
-  if (Math.abs(k - chunkScale) > 0.01) { chunkCache.clear(); chunkScale = k; }
+  if (Math.abs(k - chunkScale) > 0.01) { chunkCache.clear(); chunkPool.length = 0; chunkScale = k; }
   const span = CH * TILE, c0 = Math.max(0, Math.floor(G.cam / span)), c1 = Math.min(Math.floor((G.W - 1) / CH), Math.floor((G.cam + VW) / span));
   for (let ci = c0; ci <= c1; ci++) {
     let c = chunkCache.get(ci);
@@ -3292,7 +3295,7 @@ function drawTerrain() {
     chunkCache.set(ci, c);
     ctx.drawImage(c, ci * span, -12, (CH + 1) * TILE, ROWS * TILE + 12);
   }
-  while (chunkCache.size > 6) chunkCache.delete(chunkCache.keys().next().value);
+  while (chunkCache.size > 6) dropChunk(chunkCache.keys().next().value);
   // pulsing glow on cracked tiles
   const x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
   for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) if (G.tiles[ty * G.W + tx] === 4) {
@@ -3988,16 +3991,55 @@ function buildRun(L, pack) {
   return { segs, chest, wisps, forks, recall: recallPool, fresh: !!pack };
 }
 
+/* ---------- phone safety: notice if the page restarted mid-realm, and adapt ---------- */
+const CRUMB = "rq-crumb", NOWAIT = "rq-nowait", LITE = "rq-lite";
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+function setCrumb(L, phase) { lsSet(CRUMB, L ? JSON.stringify({ lv: L.id, phase, t: Date.now() }) : null); }
+addEventListener("pagehide", e => { if (!e.persisted) setCrumb(null); });
+function checkCrumb() {
+  let c = null; try { c = JSON.parse(lsGet(CRUMB) || "null"); } catch (e) {}
+  setCrumb(null);
+  if (!c || Date.now() - c.t > 20 * 60 * 1000) return;
+  const L = LEVELS.find(l => l.id === c.lv); if (!L) return;
+  const gen = c.phase === "gen";
+  if (gen) lsSet(NOWAIT, "1"); else lsSet(LITE, "1");
+  showModal(p => p.append(el("span", { class: "kicker", text: "The page restarted" }), el("h2", { text: L.name }),
+    el("p", { text: gen
+      ? "The page restarted while fresh questions were being written, which some phones do during a long wait. On this device, realms now start straight away: fresh questions are written while you read the briefing and used if they're ready, otherwise you play from the question bank."
+      : "The page restarted during the realm, which usually means the phone ran short of memory. Lighter graphics are now on for this device." }),
+    el("div", { class: "actions" },
+      el("button", { type: "button", class: "btn primary", text: "Enter the realm again", onclick: () => beginRealm(L) }),
+      el("button", { type: "button", class: "btn", text: "Back to the map", onclick: () => closeModal() }))));
+}
+function reportError(msg) {
+  showModal(p => p.append(el("span", { class: "kicker", text: "Something went wrong" }), el("h2", { text: "The realm couldn't start" }),
+    el("p", { text: "Tell Claude this message so it can be fixed:" }), el("p", { class: "mono", text: String(msg).slice(0, 300) }),
+    el("div", { class: "actions" }, el("button", { type: "button", class: "btn", text: "Back to the map", onclick: () => closeModal() }))));
+}
+
 /* Starting a realm: wait for fresh questions (or skip), then build the run. */
 async function beginRealm(L) {
   closeModal();
   if (!hasChars()) { openCreator({ after: () => beginRealm(L) }); return; }
   let pack = null, skipped = false;
-  const go = pk => { if (GEN[L.id]) GEN[L.id].status = "used"; L.run = buildRun(L, pk); startLevel(L); if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500); };
+  const go = pk => {
+    if (GEN[L.id]) GEN[L.id].status = "used";
+    try { L.run = buildRun(L, pk); startLevel(L); }
+    catch (e) {
+      console.error(e);
+      if (!pk) { setCrumb(null); quitToMap(); reportError(e && e.message || e); return; }
+      try { L.run = buildRun(L, null); startLevel(L); pk = null; } catch (e2) { setCrumb(null); quitToMap(); reportError(e2 && e2.message || e2); return; }
+    }
+    setCrumb(L, "play");
+    if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500);
+  };
   if (CAP.sample) {
     const g = GEN[L.id];
     if (!g || !["loading", "ready"].includes(g.status)) prefetchRealm(L);
-    if (GEN[L.id].status === "loading") {
+    if (GEN[L.id].status === "loading" && lsGet(NOWAIT)) pack = null;
+    else if (GEN[L.id].status === "loading") {
+      setCrumb(L, "gen");
       showModal(p => p.append(el("span", { class: "kicker", text: "Preparing · " + L.name }), el("h2", { text: "Writing fresh questions" }),
         el("p", { class: "lore", text: "Claude is writing a new set of questions from your Week 1 material, so this run doesn't repeat earlier ones. It usually takes 10–30 seconds." }),
         el("div", { class: "spinner", "aria-hidden": "true" }),

@@ -13,13 +13,14 @@ function shade(c, t) { return t >= 0 ? mix(c, "#ffffff", Math.min(1, t)) : mix(c
 function rgba(c, a) { const A = hexRgb(c); return "rgba(" + A[0] + "," + A[1] + "," + A[2] + "," + a + ")"; }
 
 /* ---------- terrain: hand-shaded tiles, pre-rendered into cached chunks ---------- */
-const CH = 16, chunkCache = new Map();
+const CH = 16, chunkCache = new Map(), chunkPool = [];  // canvases are reused: phones free discarded canvases slowly
 let chunkScale = 0;
 function markDirty(tx) {
   const ci = Math.floor(tx / CH);
-  chunkCache.delete(ci); chunkCache.delete(ci - 1); chunkCache.delete(ci + 1);
+  dropChunk(ci); dropChunk(ci - 1); dropChunk(ci + 1);
 }
-function clearChunks() { chunkCache.clear(); }
+function dropChunk(ci) { const c = chunkCache.get(ci); if (c) { chunkCache.delete(ci); if (chunkPool.length < 8) chunkPool.push(c); } }
+function clearChunks() { for (const ci of [...chunkCache.keys()]) dropChunk(ci); }
 function tileAt(tx, ty) {
   if (tx < 0 || tx >= G.W) return 1;
   if (ty < 0) return 0;
@@ -81,9 +82,10 @@ function drawTile(tx, ty) {
   }
 }
 function renderChunk(ci) {
-  const k = chunkScale, c = document.createElement("canvas");
-  c.width = Math.ceil((CH + 1) * TILE * k); c.height = Math.ceil((ROWS * TILE + 12) * k);
-  const g = c.getContext("2d"); g.scale(k, k); g.translate(-ci * CH * TILE, 12);
+  const k = chunkScale, c = chunkPool.pop() || document.createElement("canvas");
+  const w = Math.ceil((CH + 1) * TILE * k), h = Math.ceil((ROWS * TILE + 12) * k);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const g = c.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h); g.scale(k, k); g.translate(-ci * CH * TILE, 12);
   const main = ctx; ctx = g;
   try { for (let tx = ci * CH; tx <= Math.min(G.W - 1, ci * CH + CH); tx++) for (let ty = 0; ty < ROWS; ty++) drawTile(tx, ty); }
   finally { ctx = main; }
@@ -91,7 +93,7 @@ function renderChunk(ci) {
 }
 function drawTerrain() {
   const k = Math.min(2.4, BASESC * DPR);
-  if (Math.abs(k - chunkScale) > 0.01) { chunkCache.clear(); chunkScale = k; }
+  if (Math.abs(k - chunkScale) > 0.01) { chunkCache.clear(); chunkPool.length = 0; chunkScale = k; }
   const span = CH * TILE, c0 = Math.max(0, Math.floor(G.cam / span)), c1 = Math.min(Math.floor((G.W - 1) / CH), Math.floor((G.cam + VW) / span));
   for (let ci = c0; ci <= c1; ci++) {
     let c = chunkCache.get(ci);
@@ -99,7 +101,7 @@ function drawTerrain() {
     chunkCache.set(ci, c);
     ctx.drawImage(c, ci * span, -12, (CH + 1) * TILE, ROWS * TILE + 12);
   }
-  while (chunkCache.size > 6) chunkCache.delete(chunkCache.keys().next().value);
+  while (chunkCache.size > 6) dropChunk(chunkCache.keys().next().value);
   // pulsing glow on cracked tiles
   const x0 = Math.max(0, Math.floor(G.cam / TILE)), x1 = Math.min(G.W - 1, Math.ceil((G.cam + VW) / TILE));
   for (let tx = x0; tx <= x1; tx++) for (let ty = 0; ty < ROWS; ty++) if (G.tiles[ty * G.W + tx] === 4) {

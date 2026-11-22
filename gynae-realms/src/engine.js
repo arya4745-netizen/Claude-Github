@@ -602,7 +602,7 @@ function startLevel(L) {
   lastFrame = performance.now();
   toast(L.station + ". Read the signs: the gates and leaps ask about them.");
 }
-function quitToMap() { G = null; closeModal(); $("gameScreen").hidden = true; $("mapScreen").hidden = false; renderMap(); }
+function quitToMap() { setCrumb(null); G = null; closeModal(); $("gameScreen").hidden = true; $("mapScreen").hidden = false; renderMap(); }
 
 /* ================= HUD ================= */
 const HEART_FULL = '<svg viewBox="0 0 24 24"><path fill="#ff7a8a" stroke="#2a0a10" stroke-width="1.2" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.1 0 3.6 1.2 4.3 2.5h2c.7-1.3 2.2-2.5 4.3-2.5 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>';
@@ -1290,7 +1290,7 @@ function drawFlash(fn, cx, cy, size, flash, color) {
 let VW = 480, VH = 384, SC = 1, OFFY = 0, DPR = 1, STW = 480, STH = 384, BASESC = 1;
 function resize() {
   const r = $("stage").getBoundingClientRect();
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = Math.min(window.devicePixelRatio || 1, lsGet(LITE) ? 1 : 2);
   cv.width = Math.max(1, Math.round(r.width * DPR)); cv.height = Math.max(1, Math.round(r.height * DPR));
   SC = Math.min(r.height / (ROWS * TILE), r.width / (11 * TILE));
   STW = r.width; STH = r.height; BASESC = SC;
@@ -1788,4 +1788,4 @@ function frame(now) {
   render();
 }
 requestAnimationFrame(frame);
-setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); }, 0);  // after every script has loaded
+setTimeout(() => { renderMap(); renderStoreNote(); initCaps(); checkCrumb(); }, 0);  // after every script has loaded

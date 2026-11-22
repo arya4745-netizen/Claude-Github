@@ -135,16 +135,55 @@ function buildRun(L, pack) {
   return { segs, chest, wisps, forks, recall: recallPool, fresh: !!pack };
 }
 
+/* ---------- phone safety: notice if the page restarted mid-realm, and adapt ---------- */
+const CRUMB = "rq-crumb", NOWAIT = "rq-nowait", LITE = "rq-lite";
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+function setCrumb(L, phase) { lsSet(CRUMB, L ? JSON.stringify({ lv: L.id, phase, t: Date.now() }) : null); }
+addEventListener("pagehide", e => { if (!e.persisted) setCrumb(null); });
+function checkCrumb() {
+  let c = null; try { c = JSON.parse(lsGet(CRUMB) || "null"); } catch (e) {}
+  setCrumb(null);
+  if (!c || Date.now() - c.t > 20 * 60 * 1000) return;
+  const L = LEVELS.find(l => l.id === c.lv); if (!L) return;
+  const gen = c.phase === "gen";
+  if (gen) lsSet(NOWAIT, "1"); else lsSet(LITE, "1");
+  showModal(p => p.append(el("span", { class: "kicker", text: "The page restarted" }), el("h2", { text: L.name }),
+    el("p", { text: gen
+      ? "The page restarted while fresh questions were being written, which some phones do during a long wait. On this device, realms now start straight away: fresh questions are written while you read the briefing and used if they're ready, otherwise you play from the question bank."
+      : "The page restarted during the realm, which usually means the phone ran short of memory. Lighter graphics are now on for this device." }),
+    el("div", { class: "actions" },
+      el("button", { type: "button", class: "btn primary", text: "Enter the realm again", onclick: () => beginRealm(L) }),
+      el("button", { type: "button", class: "btn", text: "Back to the map", onclick: () => closeModal() }))));
+}
+function reportError(msg) {
+  showModal(p => p.append(el("span", { class: "kicker", text: "Something went wrong" }), el("h2", { text: "The realm couldn't start" }),
+    el("p", { text: "Tell Claude this message so it can be fixed:" }), el("p", { class: "mono", text: String(msg).slice(0, 300) }),
+    el("div", { class: "actions" }, el("button", { type: "button", class: "btn", text: "Back to the map", onclick: () => closeModal() }))));
+}
+
 /* Starting a realm: wait for fresh questions (or skip), then build the run. */
 async function beginRealm(L) {
   closeModal();
   if (!hasChars()) { openCreator({ after: () => beginRealm(L) }); return; }
   let pack = null, skipped = false;
-  const go = pk => { if (GEN[L.id]) GEN[L.id].status = "used"; L.run = buildRun(L, pk); startLevel(L); if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500); };
+  const go = pk => {
+    if (GEN[L.id]) GEN[L.id].status = "used";
+    try { L.run = buildRun(L, pk); startLevel(L); }
+    catch (e) {
+      console.error(e);
+      if (!pk) { setCrumb(null); quitToMap(); reportError(e && e.message || e); return; }
+      try { L.run = buildRun(L, null); startLevel(L); pk = null; } catch (e2) { setCrumb(null); quitToMap(); reportError(e2 && e2.message || e2); return; }
+    }
+    setCrumb(L, "play");
+    if (pk) toast("Fresh questions: this run's gates, leaps, wisps, lanes and guardian questions were written just now.", "good", 5500); else toast("Playing from the question bank, least-recently-seen first.", null, 4500);
+  };
   if (CAP.sample) {
     const g = GEN[L.id];
     if (!g || !["loading", "ready"].includes(g.status)) prefetchRealm(L);
-    if (GEN[L.id].status === "loading") {
+    if (GEN[L.id].status === "loading" && lsGet(NOWAIT)) pack = null;
+    else if (GEN[L.id].status === "loading") {
+      setCrumb(L, "gen");
       showModal(p => p.append(el("span", { class: "kicker", text: "Preparing · " + L.name }), el("h2", { text: "Writing fresh questions" }),
         el("p", { class: "lore", text: "Claude is writing a new set of questions from your Week 1 material, so this run doesn't repeat earlier ones. It usually takes 10–30 seconds." }),
         el("div", { class: "spinner", "aria-hidden": "true" }),
