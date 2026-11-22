@@ -1,4 +1,4 @@
-/* Gynae Realms content: Week 1 General Gynae (RANZCOG OSCE practice deck, 9 stations).
+/* The Registrar's Quest content: Week 1 General Gynae (RANZCOG OSCE practice deck, 9 stations).
    Segment types:
      sign   {title, text, note?}                 lore you read, then apply
      gate   {q}                                  door that opens on an answer

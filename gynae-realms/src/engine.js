@@ -1,5 +1,5 @@
 "use strict";
-/* Gynae Realms engine: map, dialogs, level generator, physics, rendering. Content lives in content.js. */
+/* The Registrar's Quest engine: map, dialogs, level generator, physics, rendering. Content lives in content.js. */
 
 /* ================= basics ================= */
 const TILE = 32, ROWS = 12, GR = 9, DAY = 864e5, LADDER = [1, 3, 7, 28, 60], MAXH = 5, MAXI = 3;

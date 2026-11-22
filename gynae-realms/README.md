@@ -1,4 +1,4 @@
-# Gynae Realms
+# The Registrar's Quest
 
 A browser platformer for studying **Week 1: General Gynae** (RANZCOG OSCE practice deck, 9 stations). Each station is a fantasy realm:
 

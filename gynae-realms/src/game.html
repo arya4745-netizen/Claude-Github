@@ -1,4 +1,5 @@
-<title>Gynae Realms</title>
+<title>The Registrar's Quest</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,9 +30,10 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; overflow: hidden; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; overflow: hidden; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
-button { font: inherit; color: inherit; }
+button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+#pad, #pad * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 button:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 #app { height: 100%; position: relative; }
 .screen { height: 100%; }
@@ -283,7 +285,7 @@ textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-
     <div class="map-wrap">
       <header class="masthead">
         <span class="eyebrow">Week 1 · General gynae · RANZCOG OSCE</span>
-        <h1>Gynae Realms</h1>
+        <h1>The Registrar's Quest</h1>
         <p class="lede">Nine realms, one per station of your week-one deck. Wall-jump up shafts, outrun the chase, solve a puzzle room, leap onto the right answer, dig out hidden pearls, then break each realm's guardian in open recall.</p>
       </header>
       <div class="shrine">
